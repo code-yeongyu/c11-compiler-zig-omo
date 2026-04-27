@@ -46,6 +46,9 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "doomstat.h"
 
 
+#define FIXED_FROM_SHORT(value) ((fixed_t)((unsigned)SHORT(value) << FRACBITS))
+
+
 void	P_SpawnMapThing (mapthing_t*	mthing);
 
 
@@ -143,8 +146,8 @@ void P_LoadVertexes (int lump)
     // internal representation as fixed.
     for (i=0 ; i<numvertexes ; i++, li++, ml++)
     {
-	li->x = SHORT(ml->x)<<FRACBITS;
-	li->y = SHORT(ml->y)<<FRACBITS;
+	li->x = FIXED_FROM_SHORT(ml->x);
+	li->y = FIXED_FROM_SHORT(ml->y);
     }
 
     // Free buffer memory.
@@ -178,8 +181,8 @@ void P_LoadSegs (int lump)
 	li->v1 = &vertexes[SHORT(ml->v1)];
 	li->v2 = &vertexes[SHORT(ml->v2)];
 					
-	li->angle = (SHORT(ml->angle))<<16;
-	li->offset = (SHORT(ml->offset))<<16;
+	li->angle = (int)((unsigned)SHORT(ml->angle) << 16);
+	li->offset = (int)((unsigned)SHORT(ml->offset) << 16);
 	linedef = SHORT(ml->linedef);
 	ldef = &lines[linedef];
 	li->linedef = ldef;
@@ -244,8 +247,8 @@ void P_LoadSectors (int lump)
     ss = sectors;
     for (i=0 ; i<numsectors ; i++, ss++, ms++)
     {
-	ss->floorheight = SHORT(ms->floorheight)<<FRACBITS;
-	ss->ceilingheight = SHORT(ms->ceilingheight)<<FRACBITS;
+	ss->floorheight = FIXED_FROM_SHORT(ms->floorheight);
+	ss->ceilingheight = FIXED_FROM_SHORT(ms->ceilingheight);
 	ss->floorpic = R_FlatNumForName(ms->floorpic);
 	ss->ceilingpic = R_FlatNumForName(ms->ceilingpic);
 	ss->lightlevel = SHORT(ms->lightlevel);
@@ -279,15 +282,15 @@ void P_LoadNodes (int lump)
     
     for (i=0 ; i<numnodes ; i++, no++, mn++)
     {
-	no->x = SHORT(mn->x)<<FRACBITS;
-	no->y = SHORT(mn->y)<<FRACBITS;
-	no->dx = SHORT(mn->dx)<<FRACBITS;
-	no->dy = SHORT(mn->dy)<<FRACBITS;
+	no->x = FIXED_FROM_SHORT(mn->x);
+	no->y = FIXED_FROM_SHORT(mn->y);
+	no->dx = FIXED_FROM_SHORT(mn->dx);
+	no->dy = FIXED_FROM_SHORT(mn->dy);
 	for (j=0 ; j<2 ; j++)
 	{
 	    no->children[j] = SHORT(mn->children[j]);
 	    for (k=0 ; k<4 ; k++)
-		no->bbox[j][k] = SHORT(mn->bbox[j][k])<<FRACBITS;
+		no->bbox[j][k] = FIXED_FROM_SHORT(mn->bbox[j][k]);
 	}
     }
 	
@@ -451,8 +454,8 @@ void P_LoadSideDefs (int lump)
     sd = sides;
     for (i=0 ; i<numsides ; i++, msd++, sd++)
     {
-	sd->textureoffset = SHORT(msd->textureoffset)<<FRACBITS;
-	sd->rowoffset = SHORT(msd->rowoffset)<<FRACBITS;
+	sd->textureoffset = FIXED_FROM_SHORT(msd->textureoffset);
+	sd->rowoffset = FIXED_FROM_SHORT(msd->rowoffset);
 	sd->toptexture = R_TextureNumForName(msd->toptexture);
 	sd->bottomtexture = R_TextureNumForName(msd->bottomtexture);
 	sd->midtexture = R_TextureNumForName(msd->midtexture);
@@ -478,8 +481,8 @@ void P_LoadBlockMap (int lump)
     for (i=0 ; i<count ; i++)
 	blockmaplump[i] = SHORT(blockmaplump[i]);
 		
-    bmaporgx = blockmaplump[0]<<FRACBITS;
-    bmaporgy = blockmaplump[1]<<FRACBITS;
+    bmaporgx = (fixed_t)((unsigned)blockmaplump[0] << FRACBITS);
+    bmaporgy = (fixed_t)((unsigned)blockmaplump[1] << FRACBITS);
     bmapwidth = blockmaplump[2];
     bmapheight = blockmaplump[3];
 	
@@ -703,5 +706,4 @@ void P_Init (void)
     P_InitPicAnims ();
     R_InitSprites (sprnames);
 }
-
 
