@@ -1,0 +1,35 @@
+# phase1/Makefile.common
+# Shared compile settings for every Phase-1 sub-project (DOOM port, HTTP/2, C11 ref).
+# Sub-makefiles include this file at the top.
+
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+CC      ?= cc
+CSTD    ?= c11
+CFLAGS_BASE := -std=$(CSTD) -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g
+LDFLAGS_BASE :=
+
+ifeq ($(UNAME_S),Darwin)
+  PLATFORM := macos
+  CFLAGS_PLATFORM := -D_DARWIN_C_SOURCE
+endif
+ifeq ($(UNAME_S),Linux)
+  PLATFORM := linux
+  CFLAGS_PLATFORM := -D_GNU_SOURCE -pthread
+  LDFLAGS_PLATFORM := -pthread
+endif
+
+CFLAGS  ?= $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+LDFLAGS ?= $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+
+# Fail loudly if a target needs a feature the host can't provide
+require-linux:
+	@[ "$(PLATFORM)" = "linux" ] || { echo "this target only works on linux (got $(PLATFORM))"; exit 1; }
+require-darwin:
+	@[ "$(PLATFORM)" = "macos" ] || { echo "this target only works on macOS (got $(PLATFORM))"; exit 1; }
+
+print-platform:
+	@echo "PLATFORM=$(PLATFORM) ARCH=$(UNAME_M) CC=$(CC) CFLAGS=$(CFLAGS)"
+
+.PHONY: require-linux require-darwin print-platform
