@@ -1,0 +1,39 @@
+name: phase-2-zig
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'phase2/**'
+      - '.github/workflows/phase2-zig.yml'
+  pull_request:
+    paths:
+      - 'phase2/**'
+      - '.github/workflows/phase2-zig.yml'
+
+jobs:
+  build-and-test:
+    name: zcc build & test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+      - name: zig fmt --check
+        if: hashFiles('phase2/build.zig') != ''
+        working-directory: phase2
+        run: zig fmt --check src tests build.zig
+      - name: zig build
+        if: hashFiles('phase2/build.zig') != ''
+        working-directory: phase2
+        run: zig build -Drelease-safe
+      - name: zig build test
+        if: hashFiles('phase2/build.zig') != ''
+        working-directory: phase2
+        run: zig build test --summary all

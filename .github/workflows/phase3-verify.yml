@@ -1,0 +1,55 @@
+name: phase-3-verify
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'phase3/**'
+      - '.github/workflows/phase3-verify.yml'
+  pull_request:
+    paths:
+      - 'phase3/**'
+      - 'phase2/**'
+      - '.github/workflows/phase3-verify.yml'
+
+jobs:
+  zcc-vs-gcc:
+    name: zcc-vs-gcc differential (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+      - name: Build zcc
+        if: hashFiles('phase2/build.zig') != ''
+        working-directory: phase2
+        run: zig build -Drelease-safe
+      - name: Run differential tests (-O0)
+        if: hashFiles('phase3/run-diff.sh') != ''
+        run: bash phase3/run-diff.sh -O0
+      - name: Run differential tests (-O2)
+        if: hashFiles('phase3/run-diff.sh') != ''
+        run: bash phase3/run-diff.sh -O2
+
+  cross-compile-linux:
+    name: zcc cross-compile (linux x86_64) under docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.16.0
+      - name: Build zcc
+        if: hashFiles('phase2/build.zig') != ''
+        working-directory: phase2
+        run: zig build -Drelease-safe
+      - name: Cross-compile sample to linux-x86_64 and run in docker
+        if: hashFiles('phase3/run-cross-docker.sh') != ''
+        run: bash phase3/run-cross-docker.sh

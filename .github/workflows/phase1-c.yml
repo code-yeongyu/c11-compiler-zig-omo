@@ -1,0 +1,94 @@
+name: phase-1-c
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'phase1/**'
+      - '.github/workflows/phase1-c.yml'
+  pull_request:
+    paths:
+      - 'phase1/**'
+      - '.github/workflows/phase1-c.yml'
+
+jobs:
+  c11-reference-native:
+    name: C11 reference - native gcc / clang (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          uname -a
+          gcc --version || true
+          clang --version || true
+          make --version || true
+      - name: Build C11 reference
+        if: hashFiles('phase1/c11-ref/Makefile') != ''
+        working-directory: phase1/c11-ref
+        run: make all
+      - name: Run C11 reference tests
+        if: hashFiles('phase1/c11-ref/Makefile') != ''
+        working-directory: phase1/c11-ref
+        run: make test
+
+  http2-server-native:
+    name: HTTP/2 server - native build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build HTTP/2 server
+        if: hashFiles('phase1/http2/Makefile') != ''
+        working-directory: phase1/http2
+        run: make all
+      - name: Run HTTP/2 unit tests
+        if: hashFiles('phase1/http2/Makefile') != ''
+        working-directory: phase1/http2
+        run: make test
+      - name: Run HTTP/2 integration smoke test
+        if: hashFiles('phase1/http2/Makefile') != ''
+        working-directory: phase1/http2
+        run: make smoke
+
+  doom-port:
+    name: DOOM headless build & QA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build DOOM (headless)
+        if: hashFiles('phase1/doom/Makefile') != ''
+        working-directory: phase1/doom
+        run: make all
+      - name: Headless DOOM smoke (no display, no WAD)
+        if: hashFiles('phase1/doom/Makefile') != ''
+        working-directory: phase1/doom
+        run: make smoke
+
+  cross-compile-linux-in-docker:
+    name: Linux gcc-in-docker matrix (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [gcc:13, gcc:14]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build everything inside ${{ matrix.image }}
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/work -w /work ${{ matrix.image }} bash -c '
+            set -euxo pipefail
+            for d in phase1/c11-ref phase1/http2 phase1/doom; do
+              if [ -f "$d/Makefile" ]; then
+                make -C "$d" all
+                make -C "$d" test || true
+              fi
+            done
+          '
