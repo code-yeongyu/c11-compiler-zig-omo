@@ -1,0 +1,181 @@
+[interactive operator: deep-engineer] c11-ref QA start=2026-04-27T07:30:38Z
+rm -rf .build 001_generic_selection_test 002_alignas_alignof_test 003_atomic_qualifier_test 004_atomic_specifier_test 005_thread_local_test 006_noreturn_test 007_static_assert_test 008_anonymous_struct_union_test 009_unicode_literals_test 010_designated_initializers_test 011_compound_literals_test 012_complex_arithmetic_test 013_vla_test 014_aligned_alloc_test 015_static_assert_runtime_mix_test 016_optional_feature_macros_test 017_integer_promotions_test 018_usual_arithmetic_conversions_test 019_corner_cases_test 020_gets_removal_test 021_fopen_x_mode_test 022_quick_exit_test 023_timespec_get_test *.dSYM
+[interactive operator: deep-engineer] make clean exit=0
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 001_generic_selection.c -o .build/gcc/001_generic_selection.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 001_generic_selection_test.c -o .build/gcc/001_generic_selection_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 002_alignas_alignof.c -o .build/gcc/002_alignas_alignof.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 002_alignas_alignof_test.c -o .build/gcc/002_alignas_alignof_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 003_atomic_qualifier.c -o .build/gcc/003_atomic_qualifier.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 003_atomic_qualifier_test.c -o .build/gcc/003_atomic_qualifier_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 004_atomic_specifier.c -o .build/gcc/004_atomic_specifier.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 004_atomic_specifier_test.c -o .build/gcc/004_atomic_specifier_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 005_thread_local.c -o .build/gcc/005_thread_local.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 005_thread_local_test.c -o .build/gcc/005_thread_local_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 006_noreturn.c -o .build/gcc/006_noreturn.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 006_noreturn_test.c -o .build/gcc/006_noreturn_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 007_static_assert.c -o .build/gcc/007_static_assert.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 007_static_assert_test.c -o .build/gcc/007_static_assert_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 008_anonymous_struct_union.c -o .build/gcc/008_anonymous_struct_union.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 008_anonymous_struct_union_test.c -o .build/gcc/008_anonymous_struct_union_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 009_unicode_literals.c -o .build/gcc/009_unicode_literals.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 009_unicode_literals_test.c -o .build/gcc/009_unicode_literals_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 010_designated_initializers.c -o .build/gcc/010_designated_initializers.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 010_designated_initializers_test.c -o .build/gcc/010_designated_initializers_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 011_compound_literals.c -o .build/gcc/011_compound_literals.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 011_compound_literals_test.c -o .build/gcc/011_compound_literals_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 012_complex_arithmetic.c -o .build/gcc/012_complex_arithmetic.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 012_complex_arithmetic_test.c -o .build/gcc/012_complex_arithmetic_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 013_vla.c -o .build/gcc/013_vla.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 013_vla_test.c -o .build/gcc/013_vla_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 014_aligned_alloc.c -o .build/gcc/014_aligned_alloc.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 014_aligned_alloc_test.c -o .build/gcc/014_aligned_alloc_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 015_static_assert_runtime_mix.c -o .build/gcc/015_static_assert_runtime_mix.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 015_static_assert_runtime_mix_test.c -o .build/gcc/015_static_assert_runtime_mix_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 016_optional_feature_macros.c -o .build/gcc/016_optional_feature_macros.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 016_optional_feature_macros_test.c -o .build/gcc/016_optional_feature_macros_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 017_integer_promotions.c -o .build/gcc/017_integer_promotions.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 017_integer_promotions_test.c -o .build/gcc/017_integer_promotions_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 018_usual_arithmetic_conversions.c -o .build/gcc/018_usual_arithmetic_conversions.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 018_usual_arithmetic_conversions_test.c -o .build/gcc/018_usual_arithmetic_conversions_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 019_corner_cases.c -o .build/gcc/019_corner_cases.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 019_corner_cases_test.c -o .build/gcc/019_corner_cases_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 020_gets_removal.c -o .build/gcc/020_gets_removal.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 020_gets_removal_test.c -o .build/gcc/020_gets_removal_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 021_fopen_x_mode.c -o .build/gcc/021_fopen_x_mode.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 021_fopen_x_mode_test.c -o .build/gcc/021_fopen_x_mode_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 022_quick_exit.c -o .build/gcc/022_quick_exit.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 022_quick_exit_test.c -o .build/gcc/022_quick_exit_test.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 023_timespec_get.c -o .build/gcc/023_timespec_get.c.o
+gcc -std=c11 -pedantic -Wall -Wextra -Werror -c 023_timespec_get_test.c -o .build/gcc/023_timespec_get_test.c.o
+OK negative gcc: negative/alignas_bitfield.c rejected as expected
+OK negative gcc: negative/atomic_array.c rejected as expected
+OK negative gcc: negative/vla_in_struct.c rejected as expected
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 001_generic_selection.c -o .build/clang/001_generic_selection.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 001_generic_selection_test.c -o .build/clang/001_generic_selection_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 002_alignas_alignof.c -o .build/clang/002_alignas_alignof.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 002_alignas_alignof_test.c -o .build/clang/002_alignas_alignof_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 003_atomic_qualifier.c -o .build/clang/003_atomic_qualifier.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 003_atomic_qualifier_test.c -o .build/clang/003_atomic_qualifier_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 004_atomic_specifier.c -o .build/clang/004_atomic_specifier.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 004_atomic_specifier_test.c -o .build/clang/004_atomic_specifier_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 005_thread_local.c -o .build/clang/005_thread_local.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 005_thread_local_test.c -o .build/clang/005_thread_local_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 006_noreturn.c -o .build/clang/006_noreturn.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 006_noreturn_test.c -o .build/clang/006_noreturn_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 007_static_assert.c -o .build/clang/007_static_assert.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 007_static_assert_test.c -o .build/clang/007_static_assert_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 008_anonymous_struct_union.c -o .build/clang/008_anonymous_struct_union.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 008_anonymous_struct_union_test.c -o .build/clang/008_anonymous_struct_union_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 009_unicode_literals.c -o .build/clang/009_unicode_literals.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 009_unicode_literals_test.c -o .build/clang/009_unicode_literals_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 010_designated_initializers.c -o .build/clang/010_designated_initializers.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 010_designated_initializers_test.c -o .build/clang/010_designated_initializers_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 011_compound_literals.c -o .build/clang/011_compound_literals.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 011_compound_literals_test.c -o .build/clang/011_compound_literals_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 012_complex_arithmetic.c -o .build/clang/012_complex_arithmetic.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 012_complex_arithmetic_test.c -o .build/clang/012_complex_arithmetic_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 013_vla.c -o .build/clang/013_vla.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 013_vla_test.c -o .build/clang/013_vla_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 014_aligned_alloc.c -o .build/clang/014_aligned_alloc.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 014_aligned_alloc_test.c -o .build/clang/014_aligned_alloc_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 015_static_assert_runtime_mix.c -o .build/clang/015_static_assert_runtime_mix.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 015_static_assert_runtime_mix_test.c -o .build/clang/015_static_assert_runtime_mix_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 016_optional_feature_macros.c -o .build/clang/016_optional_feature_macros.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 016_optional_feature_macros_test.c -o .build/clang/016_optional_feature_macros_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 017_integer_promotions.c -o .build/clang/017_integer_promotions.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 017_integer_promotions_test.c -o .build/clang/017_integer_promotions_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 018_usual_arithmetic_conversions.c -o .build/clang/018_usual_arithmetic_conversions.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 018_usual_arithmetic_conversions_test.c -o .build/clang/018_usual_arithmetic_conversions_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 019_corner_cases.c -o .build/clang/019_corner_cases.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 019_corner_cases_test.c -o .build/clang/019_corner_cases_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 020_gets_removal.c -o .build/clang/020_gets_removal.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 020_gets_removal_test.c -o .build/clang/020_gets_removal_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 021_fopen_x_mode.c -o .build/clang/021_fopen_x_mode.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 021_fopen_x_mode_test.c -o .build/clang/021_fopen_x_mode_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 022_quick_exit.c -o .build/clang/022_quick_exit.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 022_quick_exit_test.c -o .build/clang/022_quick_exit_test.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 023_timespec_get.c -o .build/clang/023_timespec_get.c.o
+clang -std=c11 -pedantic -Wall -Wextra -Werror -c 023_timespec_get_test.c -o .build/clang/023_timespec_get_test.c.o
+OK negative clang: negative/alignas_bitfield.c rejected as expected
+OK negative clang: negative/atomic_array.c rejected as expected
+OK negative clang: negative/vla_in_struct.c rejected as expected
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  001_generic_selection_test.c -o 001_generic_selection_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  002_alignas_alignof_test.c -o 002_alignas_alignof_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  003_atomic_qualifier_test.c -o 003_atomic_qualifier_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  004_atomic_specifier_test.c -o 004_atomic_specifier_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  005_thread_local_test.c -o 005_thread_local_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  006_noreturn_test.c -o 006_noreturn_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  007_static_assert_test.c -o 007_static_assert_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  008_anonymous_struct_union_test.c -o 008_anonymous_struct_union_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  009_unicode_literals_test.c -o 009_unicode_literals_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  010_designated_initializers_test.c -o 010_designated_initializers_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  011_compound_literals_test.c -o 011_compound_literals_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  012_complex_arithmetic_test.c -o 012_complex_arithmetic_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  013_vla_test.c -o 013_vla_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  014_aligned_alloc_test.c -o 014_aligned_alloc_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  015_static_assert_runtime_mix_test.c -o 015_static_assert_runtime_mix_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  016_optional_feature_macros_test.c -o 016_optional_feature_macros_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  017_integer_promotions_test.c -o 017_integer_promotions_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  018_usual_arithmetic_conversions_test.c -o 018_usual_arithmetic_conversions_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  019_corner_cases_test.c -o 019_corner_cases_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  020_gets_removal_test.c -o 020_gets_removal_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  021_fopen_x_mode_test.c -o 021_fopen_x_mode_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  022_quick_exit_test.c -o 022_quick_exit_test    -lm
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE  023_timespec_get_test.c -o 023_timespec_get_test    -lm
+[interactive operator: deep-engineer] make all exit=0
+[interactive operator: deep-engineer] object-count gcc=46 clang=46
+OK negative gcc: negative/alignas_bitfield.c rejected as expected
+OK negative gcc: negative/atomic_array.c rejected as expected
+OK negative gcc: negative/vla_in_struct.c rejected as expected
+==> 001_generic_selection_test
+OK
+==> 002_alignas_alignof_test
+OK
+==> 003_atomic_qualifier_test
+OK
+==> 004_atomic_specifier_test
+OK
+==> 005_thread_local_test
+OK
+==> 006_noreturn_test
+OK
+==> 007_static_assert_test
+OK
+==> 008_anonymous_struct_union_test
+OK
+==> 009_unicode_literals_test
+OK
+==> 010_designated_initializers_test
+OK
+==> 011_compound_literals_test
+OK
+==> 012_complex_arithmetic_test
+OK
+==> 013_vla_test
+OK
+==> 014_aligned_alloc_test
+OK
+==> 015_static_assert_runtime_mix_test
+OK
+==> 016_optional_feature_macros_test
+OK
+==> 017_integer_promotions_test
+OK
+==> 018_usual_arithmetic_conversions_test
+OK
+==> 019_corner_cases_test
+OK
+==> 020_gets_removal_test
+OK
+==> 021_fopen_x_mode_test
+OK
+==> 022_quick_exit_test
+OK
+==> 023_timespec_get_test
+OK
+[interactive operator: deep-engineer] make test exit=0
+OK negative gcc: negative/alignas_bitfield.c rejected as expected
+OK negative gcc: negative/atomic_array.c rejected as expected
+OK negative gcc: negative/vla_in_struct.c rejected as expected
+[interactive operator: deep-engineer] make negative exit=0
+[interactive operator: deep-engineer] c11-ref QA done=2026-04-27T07:30:49Z

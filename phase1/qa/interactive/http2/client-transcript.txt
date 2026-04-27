@@ -1,0 +1,77 @@
+
+$ curl -v --http2-prior-knowledge http://127.0.0.1:8000/ (root)
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:8000...
+* Connected to 127.0.0.1 (127.0.0.1) port 8000
+* [HTTP/2] [1] OPENED stream for http://127.0.0.1:8000/
+* [HTTP/2] [1] [:method: GET]
+* [HTTP/2] [1] [:scheme: http]
+* [HTTP/2] [1] [:authority: 127.0.0.1:8000]
+* [HTTP/2] [1] [:path: /]
+* [HTTP/2] [1] [user-agent: curl/8.7.1]
+* [HTTP/2] [1] [accept: */*]
+> GET / HTTP/2
+> Host: 127.0.0.1:8000
+> User-Agent: curl/8.7.1
+> Accept: */*
+> 
+* Request completely sent off
+< HTTP/2 200 
+< content-type: text/plain
+< content-length: 2
+< server: c11-h2
+< 
+{ [2 bytes data]
+100     2  100     2    0     0   3384      0 --:--:-- --:--:-- --:--:--  2000
+* Connection #0 to host 127.0.0.1 left intact
+
+HTTP_STATUS=200
+FIRST20=/
+
+BODY_BYTES=2
+
+$ curl -v --http2-prior-knowledge http://127.0.0.1:8000/index.html (index)
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:8000...
+* Connected to 127.0.0.1 (127.0.0.1) port 8000
+* [HTTP/2] [1] OPENED stream for http://127.0.0.1:8000/index.html
+* [HTTP/2] [1] [:method: GET]
+* [HTTP/2] [1] [:scheme: http]
+* [HTTP/2] [1] [:authority: 127.0.0.1:8000]
+* [HTTP/2] [1] [:path: /index.html]
+* [HTTP/2] [1] [user-agent: curl/8.7.1]
+* [HTTP/2] [1] [accept: */*]
+> GET /index.html HTTP/2
+> Host: 127.0.0.1:8000
+> User-Agent: curl/8.7.1
+> Accept: */*
+> 
+* Request completely sent off
+< HTTP/2 200 
+< content-type: text/plain
+< content-length: 12
+< server: c11-h2
+< 
+{ [12 bytes data]
+100    12  100    12    0     0  21739      0 --:--:-- --:--:-- --:--:-- 12000
+* Connection #0 to host 127.0.0.1 left intact
+
+HTTP_STATUS=200
+FIRST20=/index.html
+
+BODY_BYTES=12
+
+$ 5x concurrent curl -s --http2-prior-knowledge /
+concurrent[5] status=200 first20=concurrent[3] status=200 first20=concurrent[1] status=200 first20=concurrent[2] status=200 first20=concurrent[4] status=200 first20=/
+/
+/
+/
+ bytes=/
+ bytes= bytes= bytes= bytes=2
+22
+22
+
+
+SIGTERM_SENT=1
