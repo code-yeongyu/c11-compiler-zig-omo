@@ -70,6 +70,19 @@ static int test_hpack_integer_rejects_uint32_accumulation_wrap_on_final_byte(voi
     return 0;
 }
 
+static int test_hpack_integer_rejects_uint32_overflow_on_final_byte(void)
+{
+    const uint8_t wire[] = { 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0x10u };
+    uint32_t value;
+    size_t used;
+
+    /* given a final HPACK continuation byte whose shifted value alone exceeds uint32_t {[http2-engineer]} */
+    /* when the decoder reaches that final byte at shift 28 {[http2-engineer]} */
+    /* then it rejects the integer before it can wrap into a small value {[http2-engineer]} */
+    EXPECT_EQ_INT(h2_hpack_decode_integer(wire, sizeof(wire), 7u, &value, &used), H2_COMPRESSION_ERROR);
+    return 0;
+}
+
 static int test_hpack_refuses_oversized_literal_field(void)
 {
     uint8_t block[H2_HEADER_VALUE_CAP + 32u];
@@ -152,6 +165,7 @@ int main(void)
     EXPECT_EQ_INT(test_hpack_integer(), 0);
     EXPECT_EQ_INT(test_hpack_integer_rejects_overlong_uint32_shift(), 0);
     EXPECT_EQ_INT(test_hpack_integer_rejects_uint32_accumulation_wrap_on_final_byte(), 0);
+    EXPECT_EQ_INT(test_hpack_integer_rejects_uint32_overflow_on_final_byte(), 0);
     EXPECT_EQ_INT(test_hpack_decode_request_path(), 0);
     EXPECT_EQ_INT(test_hpack_decode_literal(), 0);
     EXPECT_EQ_INT(test_hpack_refuses_oversized_literal_field(), 0);

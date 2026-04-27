@@ -43,25 +43,27 @@ int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix
     pos = 1u;
     while (pos < wire_len) {
         uint8_t byte;
+        uint64_t addition;
+        uint64_t byte_value;
 
         byte = wire[pos];
+        if (pos > 5u) {
+            return H2_COMPRESSION_ERROR;
+        }
         if (shift >= 32u) {
             return H2_COMPRESSION_ERROR;
         }
-        if (shift >= 28u && (byte & 0x7fu) > 15u) {
+        byte_value = (uint64_t)(byte & 0x7fu);
+        if (byte_value > ((uint64_t)UINT32_MAX >> shift)) {
             return H2_COMPRESSION_ERROR;
         }
-        {
-            uint64_t addition;
-
-            addition = ((uint64_t)(byte & 0x7fu)) << shift;
-            result += addition;
+        addition = byte_value << shift;
+        if (result > (uint64_t)UINT32_MAX - addition) {
+            return H2_COMPRESSION_ERROR;
         }
+        result += addition;
         pos++;
         if ((byte & 0x80u) == 0u) {
-            if (result > (uint64_t)UINT32_MAX) {
-                return H2_COMPRESSION_ERROR;
-            }
             *value = (uint32_t)result;
             *used = pos;
             return H2_OK;
