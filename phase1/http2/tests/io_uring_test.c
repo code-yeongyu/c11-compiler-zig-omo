@@ -94,10 +94,46 @@ static int test_finite_timeout_fallback_submits_timeout_sqe(void)
     return 0;
 }
 
+static int test_h2_io_remove_handles_full_ring_of_deferred_cqes(void)
+{
+    h2_uring_state state;
+    unsigned char cqe_storage[H2_URING_ENTRIES * sizeof(struct io_uring_cqe)];
+    struct io_uring_cqe *cqes;
+    struct io_uring_sqe sqes[1];
+    unsigned sq_array[1];
+    unsigned sq_head = 0u;
+    unsigned sq_tail = 0u;
+    unsigned sq_mask = 0u;
+    unsigned sq_entries = 1u;
+    unsigned cq_head = 0u;
+    unsigned cq_tail = H2_URING_ENTRIES;
+    unsigned cq_mask = H2_URING_ENTRIES - 1u;
+    unsigned pos;
+
+    /* given a full CQ ring with the cancel completion behind unrelated completions {[http2-engineer]} */
+    cqes = (struct io_uring_cqe *)cqe_storage;
+    init_fake_ring(&state, &sq_head, &sq_tail, &sq_mask, &sq_entries, sq_array, sqes, &cq_head, &cq_tail, &cq_mask, cqes);
+    for (pos = 0u; pos + 1u < H2_URING_ENTRIES; pos++) {
+        cqes[pos].user_data = h2_uring_poll_user_data((int)(100u + pos));
+        cqes[pos].res = POLLIN;
+    }
+    cqes[H2_URING_ENTRIES - 1u].user_data = h2_uring_cancel_user_data(5);
+    cqes[H2_URING_ENTRIES - 1u].res = -ENOENT;
+
+    /* when h2_io_remove drains to the POLL_REMOVE completion {[http2-engineer]} */
+    EXPECT_EQ_INT(h2_uring_drain_until_cancel(&state, 5), 0);
+
+    /* then every unrelated CQE fits in the deferred buffer without EAGAIN {[http2-engineer]} */
+    EXPECT_EQ_U32(state.pending_cqe_count, H2_URING_ENTRIES - 1u);
+    EXPECT_EQ_U32(cq_head, H2_URING_ENTRIES);
+    return 0;
+}
+
 int main(void)
 {
     EXPECT_EQ_INT(test_poll_remove_preserves_unrelated_cqes(), 0);
     EXPECT_EQ_INT(test_finite_timeout_fallback_submits_timeout_sqe(), 0);
+    EXPECT_EQ_INT(test_h2_io_remove_handles_full_ring_of_deferred_cqes(), 0);
     puts("io_uring_test: ok");
     return 0;
 }
