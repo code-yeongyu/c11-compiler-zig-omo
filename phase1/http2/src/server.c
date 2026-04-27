@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -96,6 +97,24 @@ static int h2_write_ready_file(const char *path, uint16_t port)
         return -1;
     }
     return 0;
+}
+
+static void h2_log_stack_limit(void)
+{
+    struct rlimit limit;
+
+    if (getrlimit(RLIMIT_STACK, &limit) != 0) {
+        int error;
+
+        error = errno;
+        fprintf(stderr, "h2d stack limit: unavailable (errno=%d %s)\n", error, strerror(error));
+        return;
+    }
+    if (limit.rlim_cur == RLIM_INFINITY) {
+        fprintf(stderr, "h2d stack limit: unlimited\n");
+    } else {
+        fprintf(stderr, "h2d stack limit: %llu bytes\n", (unsigned long long)limit.rlim_cur);
+    }
 }
 
 static h2_client *h2_find_client(h2_client *clients, int fd)
@@ -247,6 +266,8 @@ int h2_server_run(const h2_server_config *config)
         return -1;
     }
     signal(SIGPIPE, SIG_IGN);
+    h2_log_stack_limit();
+    /* h2_connection owns large I/O buffers; keep the client table off the startup stack. */
     clients = calloc(H2_SERVER_MAX_CLIENTS, sizeof(*clients));
     if (clients == NULL) {
         return -1;
