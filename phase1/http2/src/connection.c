@@ -114,17 +114,6 @@ static h2_stream *h2_connection_find_stream(h2_connection *conn, uint32_t stream
     return NULL;
 }
 
-static bool h2_connection_is_idle_stream(const h2_connection *conn, uint32_t stream_id)
-{
-    if (stream_id == 0u) {
-        return false;
-    }
-    if ((stream_id & 1u) == 0u) {
-        return true;
-    }
-    return stream_id > conn->last_stream_id;
-}
-
 static h2_stream *h2_connection_get_stream(h2_connection *conn, uint32_t stream_id)
 {
     h2_stream *stream;
@@ -522,11 +511,22 @@ static int h2_connection_process_frame(h2_connection *conn, const h2_frame_heade
         stream = h2_connection_find_stream(conn, header->stream_id);
         if (stream != NULL) {
             h2_stream_close(stream);
-        } else if (h2_connection_is_idle_stream(conn, header->stream_id)) {
-            return H2_PROTOCOL_ERROR;
-        } else {
+            (void)error_code;
             return H2_OK;
         }
+        /* Per RFC 7540 §6.4: RST_STREAM on idle stream MUST be PROTOCOL_ERROR.
+         * Per RFC 7540 §5.1.1: client streams have odd IDs; server streams (PUSH) have even IDs.
+         * This implementation does not push, so all even IDs are guaranteed-idle.
+         */
+        if ((header->stream_id & 1U) == 0U) {
+            /* Server-initiated even ID; we never push, so always idle -> PROTOCOL_ERROR. */
+            return H2_PROTOCOL_ERROR;
+        }
+        if (header->stream_id > conn->last_stream_id) {
+            /* Future odd ID we never opened -- idle -> PROTOCOL_ERROR. */
+            return H2_PROTOCOL_ERROR;
+        }
+        /* Past odd ID: implicitly closed (we already cleaned it up). Ignore. */
         (void)error_code;
         return H2_OK;
     }
