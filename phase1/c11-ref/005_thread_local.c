@@ -3,14 +3,14 @@
 #endif
 
 struct thread_local_result {
-    int supported;
+    int threads_supported;
     int main_value;
     int worker_value;
 };
 
-#if !defined(__STDC_NO_THREADS__)
 static _Thread_local int thread_local_counter;
 
+#if !defined(__STDC_NO_THREADS__)
 static int thread_local_worker(void *argument)
 {
     int *output = argument;
@@ -23,19 +23,22 @@ static int thread_local_worker(void *argument)
 
 struct thread_local_result thread_local_run(void)
 {
-#if defined(__STDC_NO_THREADS__)
-    return (struct thread_local_result){ .supported = 0, .main_value = 0, .worker_value = 0 };
-#else
-    thrd_t thread;
     int worker_value = 0;
     thread_local_counter = 5;
+#if !defined(__STDC_NO_THREADS__)
+    thrd_t thread;
     if (thrd_create(&thread, thread_local_worker, &worker_value) == thrd_success) {
         (void)thrd_join(thread, 0);
     }
+#endif
     return (struct thread_local_result){
-        .supported = 1,
+        .threads_supported =
+#if defined(__STDC_NO_THREADS__)
+            0,
+#else
+            1,
+#endif
         .main_value = thread_local_counter,
         .worker_value = worker_value,
     };
-#endif
 }
