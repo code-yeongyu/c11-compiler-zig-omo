@@ -422,7 +422,7 @@ static int h2_connection_process_data(h2_connection *conn, const h2_frame_header
         return ret;
     }
     (void)parsed;
-    return h2_connection_refresh_recv_windows(conn, stream->id == 0u ? NULL : stream);
+    return h2_connection_refresh_recv_windows(conn, stream->state == H2_STREAM_STATE_CLOSED ? NULL : stream);
 }
 
 static int h2_connection_process_window_update(h2_connection *conn, const h2_frame_header *header, const uint8_t *payload)

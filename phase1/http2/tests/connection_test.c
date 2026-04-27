@@ -143,6 +143,33 @@ static int output_has_frame_type(const h2_connection *conn, uint8_t frame_type)
     return 0;
 }
 
+static int output_has_frame_type_for_stream(const h2_connection *conn, uint8_t frame_type, uint32_t stream_id)
+{
+    const uint8_t *out;
+    size_t out_len;
+    size_t pos;
+
+    out = h2_connection_output(conn);
+    out_len = h2_connection_output_len(conn);
+    pos = 0u;
+    while (out != NULL && pos + H2_FRAME_HEADER_LEN <= out_len) {
+        h2_frame_header header;
+
+        if (h2_frame_parse_header(out + pos, out_len - pos, &header) != H2_OK) {
+            return -1;
+        }
+        pos += H2_FRAME_HEADER_LEN;
+        if (pos + header.length > out_len) {
+            return -1;
+        }
+        if (header.type == frame_type && header.stream_id == stream_id) {
+            return 1;
+        }
+        pos += header.length;
+    }
+    return 0;
+}
+
 static int output_has_data_body(const h2_connection *conn, const char *body, size_t body_len)
 {
     const uint8_t *out;
@@ -448,6 +475,35 @@ static int test_connection_decrements_conn_recv_window_on_closed_stream_data(voi
     return 0;
 }
 
+static int test_connection_skips_window_update_after_end_stream_close(void)
+{
+    h2_connection conn;
+    uint8_t wire[256];
+    size_t wire_len;
+    const uint8_t data[] = { 'x' };
+
+    /* given stream 1 is locally half-closed and will close on END_STREAM DATA {[http2-engineer]} */
+    h2_connection_init(&conn);
+    wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+    h2_stream_init(&conn.streams[0], 1u, conn.initial_stream_window);
+    conn.streams[0].state = H2_STREAM_STATE_HALF_CLOSED_LOCAL;
+    conn.streams[0].recv_window = 1;
+    conn.last_stream_id = 1u;
+
+    /* when END_STREAM DATA closes the stream while processing flow-control {[http2-engineer]} */
+    wire_len = h2_frame_encode_data(wire, sizeof(wire), 1u, H2_FLAG_END_STREAM, data, sizeof(data));
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+
+    /* then no WINDOW_UPDATE is emitted for the closed stream {[http2-engineer]} */
+    EXPECT_EQ_INT(conn.streams[0].state, H2_STREAM_STATE_CLOSED);
+    EXPECT_EQ_INT(output_has_frame_type_for_stream(&conn, H2_FRAME_WINDOW_UPDATE, 1u), 0);
+    return 0;
+}
+
 static int test_connection_emits_rst_stream_for_untracked_stream_error(void)
 {
     h2_connection conn;
@@ -550,6 +606,7 @@ int main(void)
     EXPECT_EQ_INT(test_connection_rejects_rst_stream_on_even_idle_stream(), 0);
     EXPECT_EQ_INT(test_connection_rejects_data_on_idle_stream_as_connection_error(), 0);
     EXPECT_EQ_INT(test_connection_decrements_conn_recv_window_on_closed_stream_data(), 0);
+    EXPECT_EQ_INT(test_connection_skips_window_update_after_end_stream_close(), 0);
     EXPECT_EQ_INT(test_connection_emits_rst_stream_for_untracked_stream_error(), 0);
     EXPECT_EQ_INT(test_connection_refuses_oversized_path_as_stream_error(), 0);
     EXPECT_EQ_INT(test_connection_reclaims_refused_stream_slots_after_rst_stream(), 0);
