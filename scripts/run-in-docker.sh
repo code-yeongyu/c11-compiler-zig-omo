@@ -35,7 +35,7 @@ TARGETS=()
 MAKE_VARS=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --)         shift ;;
+    --)         : ;;
     IMAGE=*)    IMAGE="${1#IMAGE=}" ;;
     *=*)        MAKE_VARS+=("$1") ;;
     *)          TARGETS+=("$1") ;;
