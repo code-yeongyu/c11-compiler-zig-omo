@@ -21,13 +21,19 @@ Zig 0.16 removed the `async` and `await` keywords. Asynchrony is now expressed t
 fn lexFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !TokenList {
     // given a source file path
     // when we read it asynchronously
-    var future = io.async(std.fs.readFile, .{ allocator, path });
+    var future = io.async(readSourceFile, .{ allocator, path });
     defer future.cancel(io) catch {};
     const source = try future.await(io);
     defer allocator.free(source);
 
     // then we tokenize the contents
     return try tokenize(allocator, source);
+}
+
+fn readSourceFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    return try file.readToEndAlloc(allocator, 1024 * 1024 * 10);
 }
 ```
 
@@ -40,27 +46,25 @@ fn lexFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !TokenLis
 
 **Implication for `zcc`:** Pass `std.Io` through the driver. Do not design around old `async`/`await` keywords. The driver should create one `std.Io.Threaded` instance at startup and pass it to every compilation phase that can benefit from parallelism.
 
-## 2. Thread pools (`std.Thread.Pool`)
+## 2. Thread pools (`std.Io.Threaded`)
 
-`std.Thread.Pool` is the workhorse for CPU-bound parallelism. In 0.16 it supports `spawnWg` for automatic WaitGroup tracking.
+`std.Io.Threaded` is the CPU-bound parallelism backend in Zig 0.16. It provides a thread pool with work stealing, accessed through the `std.Io` interface.
 
 ### Pattern: parallel compilation units
 
 ```zig
 fn compileAll(gpa: std.mem.Allocator, io: std.Io, tus: []const TranslationUnit) !void {
     // given a list of translation units
-    var pool: std.Thread.Pool = undefined;
-    try pool.init(.{ .allocator = gpa, .n_jobs = 4 });
-    defer pool.deinit();
-
-    // when we spawn one task per TU
-    var wg: std.Thread.WaitGroup = .{};
+    // when we create a group and spawn one concurrent task per TU
+    var group = std.Io.Group.init(gpa);
+    defer group.deinit();
     for (tus) |tu| {
-        pool.spawnWg(&wg, compileTu, .{ gpa, io, tu });
+        const future = try io.concurrent(compileTu, .{ gpa, io, tu });
+        group.add(future);
     }
 
     // then we wait for all tasks to complete
-    wg.wait();
+    try group.awaitAll(io);
 }
 ```
 
@@ -68,39 +72,44 @@ fn compileAll(gpa: std.mem.Allocator, io: std.Io, tus: []const TranslationUnit) 
 
 | Method | Behavior |
 |---|---|
-| `spawnWg(&wg, func, args)` | Spawn task, auto-increment WaitGroup, auto-decrement on completion. |
-| `waitAndWork(&wg)` | Caller thread steals tasks from the pool while waiting. |
-| `spawn(func, args)` | Fire-and-forget. No WaitGroup tracking. |
+| `io.concurrent(func, args)` | Require concurrency; returns `!std.Io.Future(T)`. Fails if backend cannot oversubscribe. |
+| `group.add(future)` | Add a future to the group for batch awaiting. |
+| `group.awaitAll(io)` | Block until every future in the group resolves. |
+| `io.async(func, args)` | Decouple call from return; may or may not run concurrently. |
 
-**Implication for `zcc`:** Use `spawnWg` for per-TU compilation. Each TU gets its own `ArenaAllocator`. The main thread calls `wg.wait()` and then proceeds to the link step.
+**Implication for `zcc`:** Use `io.concurrent` for per-TU compilation. Each TU gets its own `ArenaAllocator`. The main thread calls `group.awaitAll(io)` and then proceeds to the link step.
 
-## 3. WaitGroups (`std.Thread.WaitGroup`)
+## 3. Groups (`std.Io.Group`)
 
-WaitGroups synchronize groups of tasks. In 0.16 they are built on `std.atomic.Value(usize)`.
+`std.Io.Group` synchronizes batches of futures. It replaces the old `std.Thread.WaitGroup` pattern in 0.16.
 
 ### Pattern: phased pipeline
 
 ```zig
 fn pipeline(gpa: std.mem.Allocator, io: std.Io, tus: []const TranslationUnit) !void {
     // given translation units
-    var lex_wg: std.Thread.WaitGroup = .{};
-    var parse_wg: std.Thread.WaitGroup = .{};
+    var lex_group = std.Io.Group.init(gpa);
+    defer lex_group.deinit();
+    var parse_group = std.Io.Group.init(gpa);
+    defer parse_group.deinit();
 
     // when we lex all TUs in parallel
     for (tus) |tu| {
-        io.concurrent(lexTu, .{ gpa, tu, &lex_wg });
+        const future = try io.concurrent(lexTu, .{ gpa, tu });
+        lex_group.add(future);
     }
-    lex_wg.wait();
+    try lex_group.awaitAll(io);
 
     // then we parse all TUs in parallel
     for (tus) |tu| {
-        io.concurrent(parseTu, .{ gpa, tu, &parse_wg });
+        const future = try io.concurrent(parseTu, .{ gpa, tu });
+        parse_group.add(future);
     }
-    parse_wg.wait();
+    try parse_group.awaitAll(io);
 }
 ```
 
-**Implication for `zcc`:** If you want a phased pipeline (all lexing done before any parsing starts), use separate WaitGroups per phase. If you want a streaming pipeline (parse starts as soon as lexing finishes for one TU), use a channel or a mutex-protected queue.
+**Implication for `zcc`:** If you want a phased pipeline (all lexing done before any parsing starts), use separate `Io.Group` instances per phase. If you want a streaming pipeline (parse starts as soon as lexing finishes for one TU), use a mutex-protected queue or `std.DoublyLinkedList` + `Mutex`.
 
 ## 4. Lock-free primitives (`std.atomic.Value`)
 
@@ -137,7 +146,7 @@ fn enterSymbol(symtab: *SymbolTable, sym: Symbol) void {
 - Unique ID generation (seq_cst to avoid collisions).
 - Global symbol table versioning (seq_cst).
 
-Do not use it for complex data structures. For MPMC queues, use `std.DoublyLinkedList` + `Mutex`, or third-party `HTRMC/zig-concurrent-queue` (block-based, zero-lock).
+Do not use it for complex data structures. For MPMC queues, use `std.DoublyLinkedList` + `Mutex`. (Zero-external-deps mandate: do not add third-party queue libraries.)
 
 ## 5. Memory arenas (`std.heap.ArenaAllocator`)
 
@@ -167,22 +176,24 @@ fn compileTu(gpa: std.mem.Allocator, io: std.Io, tu: TranslationUnit) !ObjectFil
 
 ## 6. Multi-process workers (`std.process.Child`)
 
-For sandboxing or invoking external tools (assembler, linker), use `std.process.Child`.
+For sandboxing or invoking external tools (assembler, linker), use `std.process`.
 
 ### Pattern: invoke system assembler
 
 ```zig
-fn assemble(gpa: std.mem.Allocator, asm_path: []const u8, obj_path: []const u8) !void {
+fn assemble(gpa: std.mem.Allocator, io: std.Io, asm_path: []const u8, obj_path: []const u8) !void {
     // given an assembly text file
-    const result = try std.process.Child.run(.{
-        .allocator = gpa,
+    const result = try std.process.run(gpa, io, .{
         .argv = &.{ "as", "-o", obj_path, asm_path },
     });
 
     // then we check the exit code
-    if (result.term.Exited != 0) {
-        std.log.err("assembler failed: {s}", .{result.stderr});
-        return error.AssembleFailed;
+    switch (result.term) {
+        .exited => |code| if (code != 0) {
+            std.log.err("assembler failed: {s}", .{result.stderr});
+            return error.AssembleFailed;
+        },
+        else => return error.AssembleFailed,
     }
 }
 ```
@@ -190,23 +201,24 @@ fn assemble(gpa: std.mem.Allocator, asm_path: []const u8, obj_path: []const u8) 
 ### Pattern: lower-level pipe control
 
 ```zig
-fn runWithPipes(gpa: std.mem.Allocator, argv: []const []const u8) !ChildOutput {
-    var child = std.process.Child.init(argv, gpa);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-    try child.spawn();
+fn runWithPipes(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8) !ChildOutput {
+    var child = try std.process.spawn(io, .{
+        .argv = argv,
+        .stdout = .pipe,
+        .stderr = .pipe,
+    });
 
-    const stdout = try child.stdout.?.readToEndAlloc(gpa, 1024 * 1024);
+    const stdout = try child.stdout.reader().readAllAlloc(gpa, 1024 * 1024);
     errdefer gpa.free(stdout);
-    const stderr = try child.stderr.?.readToEndAlloc(gpa, 1024 * 1024);
+    const stderr = try child.stderr.reader().readAllAlloc(gpa, 1024 * 1024);
     errdefer gpa.free(stderr);
 
-    const term = try child.wait();
+    const term = try child.wait(io);
     return .{ .term = term, .stdout = stdout, .stderr = stderr };
 }
 ```
 
-**Implication for `zcc`:** Use `std.process.Child.run` for simple fire-and-forget invocations (assembler, linker). Use the lower-level API when you need to capture stdout/stderr or stream data to the child.
+**Implication for `zcc`:** Use `std.process.run` for simple fire-and-forget invocations (assembler, linker). Use the lower-level `std.process.spawn` API when you need to capture stdout/stderr or stream data to the child.
 
 ## 7. Combining patterns: a full driver sketch
 
@@ -220,23 +232,22 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    // when we initialize the I/O backend and thread pool
-    var io = std.Io.Threaded.init(.{ .allocator = allocator, .n_jobs = 4 });
-    defer io.deinit();
-
-    var pool: std.Thread.Pool = undefined;
-    try pool.init(.{ .allocator = allocator, .n_jobs = 4 });
-    defer pool.deinit();
+    // when we initialize the I/O backend
+    var threaded = try std.Io.Threaded.init(allocator, .{ .n_jobs = 4 });
+    defer threaded.deinit();
+    const io = threaded.io();
 
     // compile each TU in parallel
-    var wg: std.Thread.WaitGroup = .{};
+    var group = std.Io.Group.init(allocator);
+    defer group.deinit();
     for (args[1..]) |tu_path| {
-        pool.spawnWg(&wg, compileTuPipeline, .{ allocator, io, tu_path });
+        const future = try io.concurrent(compileTuPipeline, .{ allocator, io, tu_path });
+        group.add(future);
     }
-    wg.wait();
+    try group.awaitAll(io);
 
     // then link all object files
-    try linkObjects(allocator, &obj_files);
+    try linkObjects(allocator, io, &obj_files);
 }
 ```
 
@@ -245,7 +256,7 @@ pub fn main() !void {
 | Removed / Deprecated | Replacement | Why |
 |---|---|---|
 | `std.atomic.Atomic` | `std.atomic.Value` | Cleaner API, same builtins underneath. |
-| `std.atomic.Queue` / `std.atomic.Stack` | `std.DoublyLinkedList` + `Mutex`, or `zig-concurrent-queue` | Removed from std lib. |
+| `std.atomic.Queue` / `std.atomic.Stack` | `std.DoublyLinkedList` + `Mutex` | Removed from std lib. Do not add third-party replacements. |
 | `heap.ThreadSafeAllocator` | `heap.ArenaAllocator` (now thread-safe) | Simplified API. |
 | `@cImport` | `addTranslateC` in build system | C translation moved to build time. |
 | `@Type` | `@Int`, `@Struct`, `@Union`, `@Enum`, `@Pointer`, `@Fn`, `@Tuple`, `@EnumLiteral` | Finer-grained builtins. |
@@ -254,8 +265,7 @@ pub fn main() !void {
 
 - Zig 0.16.0 Release Notes: https://ziglang.org/download/0.16.0/release-notes.html
 - Zig Language Reference: https://ziglang.org/documentation/0.16.0/
-- `std.Thread.Pool`: https://github.com/ziglang/zig/blob/master/lib/std/Thread/Pool.zig
-- `std.process.Child`: https://github.com/ziglang/zig/blob/master/lib/std/process/Child.zig
+- `std.Io.Threaded`: https://github.com/ziglang/zig/blob/master/lib/std/Io/Threaded.zig
+- `std.process`: https://github.com/ziglang/zig/blob/master/lib/std/process.zig
 - `std.MultiArrayList`: https://github.com/ziglang/zig/blob/master/lib/std/multi_array_list.zig
 - Zig's New Async I/O (Andrew Kelley): https://andrewkelley.me/post/zig-new-async-io-text-version.html
-- `zig-concurrent-queue`: https://github.com/HTRMC/zig-concurrent-queue

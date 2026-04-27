@@ -19,7 +19,7 @@ This document maps C11 language features to their Zig 0.16 equivalents. It serve
 | `_Bool` | `bool` | Zig `bool` is 1 bit logically, 1 byte physically. C `_Bool` is 1 byte. |
 | `float` | `f32` | IEEE 754 single precision. |
 | `double` | `f64` | IEEE 754 double precision. |
-| `long double` | `f80` or `f128` | Platform-dependent. On x86_64 it is 80-bit extended precision (`f80`). On arm64 it is `f128`. Match the target ABI. |
+| `long double` | `f80` or `f64` or `f128` | Platform-dependent. On x86_64 it is 80-bit extended precision (`f80`). On Darwin arm64 it is `f64` (same as `double`). On Linux arm64 (AAPCS64) it is `f128`. Match the target ABI. |
 | `float _Complex` | `std.math.complex.Complex(f32)` | Zig std lib provides complex numbers. |
 | `double _Complex` | `std.math.complex.Complex(f64)` | |
 | `_Atomic T` | `std.atomic.Value(T)` | For scalar `T`. For structs, use `std.Thread.Mutex` or align to cache line and use atomic builtins. |
@@ -34,12 +34,12 @@ This document maps C11 language features to their Zig 0.16 equivalents. It serve
 |---|---|---|
 | `T*` | `*T` or `*allowzero T` | Zig `*T` is a non-null, non-optional single-item pointer. For C `NULL`, use `?*T`. For zero-as-valid (e.g. x86 real mode), use `*allowzero T`. |
 | `const T*` | `*const T` | Direct match. |
-| `T[]` (incomplete array) | `[]T` | Zig slice is ptr+len. C incomplete array is just a pointer. |
+| `T[]` (incomplete array) | `[*]T` or `[0]T` | C array parameters decay to pointers; external incomplete arrays carry no length. Use `[*]T` (many-pointer) for general C pointer semantics. Use `[0]T` only for flexible array member ABI layout. |
 | `T[N]` | `[N]T` | Fixed-size array. Direct match. |
 | `T[N][M]` | `[N][M]T` | Multidimensional array. Direct match. |
 | `struct S { ... }` | `const S = struct { ... }` | Zig structs are namespaced. Use `extern struct` for C ABI compatibility. |
 | `union U { ... }` | `const U = union { ... }` | Use `extern union` for C ABI. For tagged unions, use `union(enum) { ... }`. |
-| `enum E { A, B }` | `const E = enum(c_int) { A, B }` | C enums are `int`-sized. Use `enum(c_int)` for ABI match. |
+| `enum E { A, B }` | `const E = enum(c_int) { A, B }` | C enum compatible integer type is implementation/ABI/enumerator dependent. `enum(c_int)` is acceptable for common ABI interop but NOT a complete C11 sema rule. |
 | `typedef` | `const` alias or `usingnamespace` | Zig prefers `const MyInt = i32;` over `typedef`. |
 | `T (*f)(U, V)` | `*const fn (U, V) T` | Function pointer. Note Zig fn pointers are non-null; use `?*const fn(...)` for nullable. |
 
@@ -106,7 +106,7 @@ Zig has no `alloca`. Use `allocator.alloc` or inline assembly for stack pointer 
 | `while (cond)` | `while (cond)` | Direct match. |
 | `do { ... } while (cond)` | `while (true) { ... if (!cond) break; }` | No direct `do-while` in Zig. |
 | `break` / `continue` | `break` / `continue` | Direct match. |
-| `goto label` | `goto label` | Zig has `goto` for labeled blocks. Use sparingly. |
+| `goto label` | (no equivalent) | Zig has NO arbitrary `goto`. C `goto` must be represented in compiler IR / control-flow graph, NOT mapped to Zig source `goto`. |
 | `setjmp` / `longjmp` | `errdefer` / `try` / `catch` | Zig uses error unions, not setjmp. For C compatibility, implement `setjmp`/`longjmp` as inline assembly saving/restoring the frame pointer and stack pointer. |
 
 ## 4. Functions
@@ -277,9 +277,9 @@ fn abs(x: anytype) @TypeOf(x) {
 
 ### Signed integer overflow
 
-C11 signed integer overflow is undefined behavior. Zig signed integer overflow is defined to wrap in safe modes, but can be caught with `@addWithOverflow`, `@subWithOverflow`, `@mulWithOverflow`.
+C11 signed integer overflow is undefined behavior. Zig signed integer overflow TRAPS in safe modes (Debug, ReleaseSafe). Wrapping requires the `+%` operators or explicit overflow builtins (`@addWithOverflow`, `@subWithOverflow`, `@mulWithOverflow`).
 
-**Implication for `zcc`:** When compiling C11 with `zcc`, the default should match C semantics (UB on signed overflow). In debug builds, `zcc` may optionally emit overflow checks.
+**Implication for `zcc`:** When compiling C11 with `zcc`, the default should match C semantics (UB on signed overflow). In debug builds, `zcc` may optionally emit overflow checks. Do not assume Zig wrapping behavior applies to C code.
 
 ### Pointer arithmetic
 

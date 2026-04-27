@@ -47,7 +47,7 @@ pub fn build(b: *std.Build) void {
     const smoke_step = b.step("smoke", "End-to-end smoke test");
     const smoke_run = b.addRunArtifact(exe);
     smoke_run.addArg("--target");
-    smoke_run.addArg(b.fmt("{s}", .{@tagName(target.getCpuArch())}));
+    smoke_run.addArg(b.fmt("{s}", .{@tagName(target.result.cpu.arch)}));
     smoke_run.addFileArg(b.path("tests/smoke/hello.c"));
     smoke_run.addArg("-o");
     const smoke_out = smoke_run.addOutputFileArg("smoke");
@@ -72,16 +72,19 @@ pub fn build(b: *std.Build) void {
     fmt_step.dependOn(&fmt.step);
 
     // --- lint (ast-check) ---
-    const lint_step = b.step("lint", "Run ast-check");
-    const lint = b.addSystemCommand(&.{"zig", "ast-check"});
-    lint.addFileArg(b.path("src/main.zig"));
-    lint_step.dependOn(&lint.step);
+    const lint_step = b.step("lint", "Run ast-check on all .zig files");
+    const lint_src = b.addSystemCommand(&.{"zig", "ast-check"});
+    lint_src.addFileArg(b.path("src/main.zig"));
+    lint_step.dependOn(&lint_src.step);
+    const lint_tests = b.addSystemCommand(&.{"zig", "ast-check"});
+    lint_tests.addFileArg(b.path("tests/smoke/runner.zig"));
+    lint_step.dependOn(&lint_tests.step);
 
     // --- clean ---
     const clean_step = b.step("clean", "Remove build artefacts");
-    const clean = b.addRemoveDirTree(b.path("zig-cache"));
-    clean_step.dependOn(&clean.step);
-    const clean_out = b.addRemoveDirTree(b.path("zig-out"));
+    const clean_cache = b.addSystemCommand(&.{"rm", "-rf", "zig-cache"});
+    clean_step.dependOn(&clean_cache.step);
+    const clean_out = b.addSystemCommand(&.{"rm", "-rf", "zig-out"});
     clean_step.dependOn(&clean_out.step);
 }
 ```
