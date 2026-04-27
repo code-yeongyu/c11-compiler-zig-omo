@@ -41,6 +41,42 @@ override CPPFLAGS += -Iinclude
 
 This is the same fix pattern as the project-wide `EXTRA_CFLAGS += -Iinclude` bug surfaced on PR #7.
 
+### 1.1 Override-Dedup Pattern
+
+**Rule**: `override CFLAGS += ...` MUST add ONLY build-essential flags, not duplicates of flags already present in the base assignment.
+
+#### The duplication risk
+
+If an upstream `Makefile.common` already sets `CFLAGS := $(CFLAGS_BASE) $(CFLAGS_PLATFORM) ...`, writing:
+
+```make
+# WRONG: CFLAGS_BASE and CFLAGS_PLATFORM are accumulated twice.
+override CFLAGS += $(CFLAGS_BASE) $(CFLAGS_PLATFORM) -MMD -MP
+```
+
+produces `$(CFLAGS_BASE) $(CFLAGS_PLATFORM) ... $(CFLAGS_BASE) $(CFLAGS_PLATFORM) -MMD -MP`. The base and platform flags appear twice, bloating the command line and potentially breaking builds that reject duplicate flags.
+
+#### Correct pattern
+
+Keep defaults in `CFLAGS_BASE` and `CFLAGS_PLATFORM` and include them exactly once via the base assignment. The `override` line adds ONLY what the build cannot succeed without:
+
+```make
+# RIGHT: base flags are included once upstream; override adds only build-essential extras.
+override CFLAGS += -MMD -MP
+```
+
+#### Before / after
+
+```make
+# BEFORE (duplicated base flags)
+override CFLAGS += $(CFLAGS_BASE) $(CFLAGS_PLATFORM) -MMD -MP
+
+# AFTER (clean override)
+override CFLAGS += -MMD -MP
+```
+
+**Reference**: PR #12 `cc91d03` → `80b4a4a` fix.
+
 ### What each flag does
 
 | Flag | Effect |
@@ -132,6 +168,51 @@ test: $(patsubst tests/%_test.c,$(BUILD_DIR)/%_test,$(TEST_SRCS))
 - If a test binary is built from a single `.c` file (no separate `.o`), still declare all implementation files as prerequisites so the test rebuilds when the implementation changes.
 - If you use `-MMD -MP` auto-dep for `.o` files, the `.o` intermediates already carry header dependencies; the test executable rule only needs to depend on the `.o` files, not the raw `.c`.
 
+### 4.1 Parallel-Make Artifact Namespacing
+
+**Rule**: when two recipes can produce the same artifact filename via different code paths, namespace the artifact by its source path so `make -j` cannot race.
+
+#### The race
+
+Consider a Makefile with both a stdin-compile rule and a path-compile rule for the same source:
+
+```make
+# WRONG: both recipes write to the same filename.
+$(BUILD_DIR)/%.gcc.err: %.c | $(BUILD_DIR)
+	-$(CC) $(CFLAGS) -c $< -o /dev/null 2> $@ || true
+
+$(BUILD_DIR)/%.gcc.err: $(STDIN_DIR)/%.c | $(BUILD_DIR)
+	-$(CC) $(CFLAGS) -c $< -o /dev/null 2> $@ || true
+```
+
+Running `make -j` can invoke both recipes concurrently. Whichever finishes last overwrites the artifact, and the subsequent grep may inspect the wrong diagnostic output.
+
+#### Correct pattern
+
+Namespace artifacts by their source path so every recipe writes to a unique filename:
+
+```make
+# RIGHT: distinct filenames per source path.
+$(BUILD_DIR)/%.stdin.gcc.err: $(STDIN_DIR)/%.c | $(BUILD_DIR)
+	-$(CC) $(CFLAGS) -c $< -o /dev/null 2> $@ || true
+
+$(BUILD_DIR)/%.path.gcc.err: %.c | $(BUILD_DIR)
+	-$(CC) $(CFLAGS) -c $< -o /dev/null 2> $@ || true
+```
+
+#### Before / after
+
+```make
+# BEFORE (race-prone shared filename)
+$(BUILD_DIR)/atomic_filename_regression.gcc.err
+
+# AFTER (namespaced, race-free)
+$(BUILD_DIR)/atomic_filename_regression.stdin.gcc.err
+$(BUILD_DIR)/atomic_filename_regression.path.gcc.err
+```
+
+**Reference**: PR #12 `80b4a4a` `atomic_filename_regression.stdin.*` namespace fix.
+
 ## 5. Negative-Test Diagnostic Verification
 
 When a Makefile rule asserts that a compiler produced a specific diagnostic, the grep MUST be scoped to diagnostic message lines, NOT to filenames echoed by the compiler. Anti-pattern surfaced by cubic on PR #5 and PR #12:
@@ -183,3 +264,5 @@ Before opening a Makefile-touching PR, verify:
 - [ ] No hand-written header dependency lines (let the compiler generate them).
 - [ ] Negative-test rules grep diagnostics with the source filename stripped from stderr.
 - [ ] No target that consumes a file (`< $(file)` or `cat $(file)`) without the file being a prerequisite or being created earlier in the same recipe.
+- [ ] No two recipes write to the same artifact filename via different code paths (parallel-make race safety).
+- [ ] `override CFLAGS += ...` adds ONLY build-essential flags, not duplicates of `CFLAGS_BASE`/`CFLAGS_PLATFORM`.
