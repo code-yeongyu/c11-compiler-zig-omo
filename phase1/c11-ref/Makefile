@@ -112,7 +112,7 @@ check-negative-clang: $(NEGATIVE_SRCS)
 check-negative-filename-regression:
 	@mkdir -p $(BUILD_DIR)/negative
 	@src=negative/atomic_filename_regression.c; \
-	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.gcc.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.gcc.err; then \
+	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.err; then \
 		printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 		exit 1; \
 	fi; \
@@ -124,13 +124,13 @@ check-negative-filename-regression:
 		printf '%s gcc path diagnostic no longer demonstrates filename keyword pollution\n' $$src >&2; \
 		exit 1; \
 	}; \
-	if grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/atomic_filename_regression.gcc.err | grep -E 'atomic|_Atomic|array' >/dev/null; then \
+	if grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.err | grep -E 'atomic|_Atomic|array' >/dev/null; then \
 		printf '%s gcc diagnostic matched keyword only from source content, expected no atomic keyword\n' $$src >&2; \
 		exit 1; \
 	fi; \
 	printf 'OK negative gcc: filename keyword regression rejected as expected\n'; \
 	if command -v $(CLANG) >/dev/null 2>&1; then \
-		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.clang.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.clang.err; then \
+		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.err; then \
 			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
 			exit 1; \
 		fi; \
@@ -142,7 +142,7 @@ check-negative-filename-regression:
 			printf '%s clang path diagnostic no longer demonstrates filename keyword pollution\n' $$src >&2; \
 			exit 1; \
 		}; \
-		if grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/atomic_filename_regression.clang.err | grep -E 'atomic|_Atomic|array' >/dev/null; then \
+		if grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.err | grep -E 'atomic|_Atomic|array' >/dev/null; then \
 			printf '%s clang diagnostic matched keyword only from source content, expected no atomic keyword\n' $$src >&2; \
 			exit 1; \
 		fi; \
