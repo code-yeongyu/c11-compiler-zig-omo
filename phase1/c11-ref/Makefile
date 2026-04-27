@@ -27,28 +27,63 @@ PROGRAMS := \
 	016_optional_feature_macros \
 	017_integer_promotions \
 	018_usual_arithmetic_conversions \
-	019_corner_cases
+	019_corner_cases \
+	020_gets_removal \
+	021_fopen_x_mode \
+	022_quick_exit \
+	023_timespec_get
 
-TESTS := $(addsuffix _test,$(PROGRAMS))
+TESTS := $(patsubst %.c,%,$(wildcard *_test.c))
 ALL_C := $(sort $(wildcard *.c))
+NEGATIVE_C := $(sort $(wildcard negative/*.c))
 GCC ?= gcc
 CLANG ?= clang
 BUILD_DIR := .build
 TEST_CC ?= $(CC)
 LDLIBS ?= -lm
 
-.PHONY: all test clean check-gcc check-clang
+.PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang
 
-all: check-gcc check-clang $(TESTS)
+all: check-gcc negative check-clang $(TESTS)
 
 check-gcc: $(ALL_C:%=$(BUILD_DIR)/gcc/%.o)
 
 check-clang:
 	@if command -v $(CLANG) >/dev/null 2>&1; then \
-		$(MAKE) $(ALL_C:%=$(BUILD_DIR)/clang/%.o); \
+		$(MAKE) $(ALL_C:%=$(BUILD_DIR)/clang/%.o) check-negative-clang; \
 	else \
 		printf 'clang not found; skipping clang syntax build\n'; \
 	fi
+
+negative: check-negative-gcc
+
+check-negative-gcc:
+	@mkdir -p $(BUILD_DIR)/negative
+	@for src in $(NEGATIVE_C); do \
+		name=$$(basename $$src .c); \
+		if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/$$name.gcc.o 2>$(BUILD_DIR)/negative/$$name.gcc.err; then \
+			printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
+			exit 1; \
+		fi; \
+		grep -E 'atomic|_Atomic|align|Alignas|variable|variably|VLA|field|member' $(BUILD_DIR)/negative/$$name.gcc.err >/dev/null || { \
+			printf '%s gcc diagnostic missed expected constraint keyword\n' $$src >&2; \
+			exit 1; \
+		}; \
+	done
+
+check-negative-clang:
+	@mkdir -p $(BUILD_DIR)/negative
+	@for src in $(NEGATIVE_C); do \
+		name=$$(basename $$src .c); \
+		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/$$name.clang.o 2>$(BUILD_DIR)/negative/$$name.clang.err; then \
+			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
+			exit 1; \
+		fi; \
+		grep -E 'atomic|_Atomic|align|Alignas|variable|variably|VLA|field|member' $(BUILD_DIR)/negative/$$name.clang.err >/dev/null || { \
+			printf '%s clang diagnostic missed expected constraint keyword\n' $$src >&2; \
+			exit 1; \
+		}; \
+	done
 
 $(BUILD_DIR)/gcc/%.c.o: %.c
 	@mkdir -p $(dir $@)
@@ -59,7 +94,7 @@ $(BUILD_DIR)/clang/%.c.o: %.c
 	$(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $< -o $@
 
 test: $(TESTS)
-	@for test in $(TESTS); do ./$$test; done
+	@set -e; for t in $(TESTS); do echo "==> $$t"; "./$$t" || exit 1; done
 
 %_test: %_test.c %.c
 	$(TEST_CC) $(CFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
