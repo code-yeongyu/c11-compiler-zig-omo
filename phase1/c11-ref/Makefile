@@ -57,7 +57,10 @@ DEPS := $(ALL_C:%=$(BUILD_DIR)/gcc/%.d) $(ALL_C:%=$(BUILD_DIR)/clang/%.d) $(TEST
 NEGATIVE_CFLAGS := $(CFLAGS) -pedantic-errors
 
 .PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression
-.NOTPARALLEL:
+
+ifneq ($(filter clean,$(MAKECMDGOALS)),)
+check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression $(TESTS): clean
+endif
 
 all: check-gcc negative check-clang $(TESTS)
 
