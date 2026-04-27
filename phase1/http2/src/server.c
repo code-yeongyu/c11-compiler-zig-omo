@@ -104,6 +104,10 @@ static void h2_log_stack_limit(void)
     struct rlimit limit;
 
     if (getrlimit(RLIMIT_STACK, &limit) != 0) {
+        int error;
+
+        error = errno;
+        fprintf(stderr, "h2d stack limit: unavailable (errno=%d %s)\n", error, strerror(error));
         return;
     }
     if (limit.rlim_cur == RLIM_INFINITY) {
