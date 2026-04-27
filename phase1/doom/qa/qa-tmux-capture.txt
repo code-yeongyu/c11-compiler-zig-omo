@@ -17,3 +17,9 @@ Linux gcc:14 Docker build:
 
 Linux build result:
   build/linuxxdoom linked successfully under gcc:14.
+
+Linux gcc:14 ASan/UBSan smoke:
+  docker run --rm -v "$PWD":/work -w /work gcc:14 make clean smoke CC=gcc CSTD=c11 HEADLESS=1 CFLAGS='-std=c11 -Wall -Wextra -O0 -g -fsanitize=address,undefined' LDFLAGS='-fsanitize=address,undefined'
+
+Linux sanitizer result:
+  real headless smoke reached frame=64 with no ASan/UBSan/LSan runtime diagnostics in qa/qa-smoke.log.
