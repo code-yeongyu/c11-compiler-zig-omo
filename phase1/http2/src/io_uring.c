@@ -18,6 +18,7 @@
 #define H2_URING_CANCEL_FLAG UINT64_C(0x8000000000000000)
 #define H2_URING_TIMEOUT_FLAG UINT64_C(0x4000000000000000)
 #define H2_URING_FD_MASK UINT64_C(0x00000000ffffffff)
+#define H2_URING_GENERATION_MASK UINT32_C(0x3fffffff)
 #define H2_URING_SAVED_CQES H2_URING_ENTRIES
 
 typedef struct h2_uring_fd_state {
@@ -71,7 +72,7 @@ static int h2_uring_enter(int fd, unsigned to_submit, unsigned min_complete, uns
 
 static uint64_t h2_uring_poll_user_data(int fd, uint32_t generation)
 {
-    return ((uint64_t)generation << 32) | (uint64_t)(uint32_t)fd;
+    return ((uint64_t)(generation & H2_URING_GENERATION_MASK) << 32) | (uint64_t)(uint32_t)fd;
 }
 
 static uint64_t h2_uring_cancel_user_data(int fd, uint32_t generation)
@@ -189,7 +190,7 @@ static int h2_uring_set_fd(h2_io *io, int fd, bool used, uint32_t events)
     }
     state = io->state;
     if (used && !state->fds[fd].used) {
-        state->fds[fd].generation++;
+        state->fds[fd].generation = (state->fds[fd].generation + 1u) & H2_URING_GENERATION_MASK;
     }
     state->fds[fd].used = used;
     state->fds[fd].events = events;

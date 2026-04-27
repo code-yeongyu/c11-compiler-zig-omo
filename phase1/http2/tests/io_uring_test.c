@@ -206,6 +206,56 @@ static int test_io_uring_clears_active_after_poll_remove(void)
     return 0;
 }
 
+static int test_io_uring_generation_wraps_within_30_bits(void)
+{
+    h2_io io;
+    h2_uring_state state;
+    unsigned char cqe_storage[sizeof(struct io_uring_cqe)];
+    struct io_uring_cqe *cqes;
+    struct io_uring_sqe sqes[1];
+    unsigned sq_array[1];
+    unsigned sq_head = 0u;
+    unsigned sq_tail = 0u;
+    unsigned sq_mask = 0u;
+    unsigned sq_entries = 1u;
+    unsigned cq_head = 0u;
+    unsigned cq_tail = 0u;
+    unsigned cq_mask = 0u;
+    h2_event event;
+    int out_count;
+
+    /* given an fd whose generation is one short of the 30-bit cap {[http2-engineer]} */
+    cqes = (struct io_uring_cqe *)cqe_storage;
+    init_fake_ring(&state, &sq_head, &sq_tail, &sq_mask, &sq_entries, sq_array, sqes, &cq_head, &cq_tail, &cq_mask, cqes);
+    io.fd = -1;
+    io.state = &state;
+    state.fds[13].generation = H2_URING_GENERATION_MASK - 1u;
+
+    /* when the slot transitions used-to-unused-to-used twice {[http2-engineer]} */
+    EXPECT_EQ_INT(h2_io_add_connection(&io, 13), 0);
+    EXPECT_EQ_U32(state.fds[13].generation, H2_URING_GENERATION_MASK);
+    EXPECT_TRUE(!h2_uring_is_cancel_user_data(h2_uring_poll_user_data(13, state.fds[13].generation)));
+    EXPECT_TRUE(!h2_uring_is_timeout_user_data(h2_uring_poll_user_data(13, state.fds[13].generation)));
+    EXPECT_EQ_INT(h2_io_remove(&io, 13), 0);
+    EXPECT_EQ_INT(h2_io_add_connection(&io, 13), 0);
+
+    /* then generation wraps to 0 without entering flag bits and stale prior-generation CQEs are dropped {[http2-engineer]} */
+    EXPECT_EQ_U32(state.fds[13].generation, 0u);
+    EXPECT_TRUE(!h2_uring_is_cancel_user_data(h2_uring_poll_user_data(13, state.fds[13].generation)));
+    EXPECT_TRUE(!h2_uring_is_timeout_user_data(h2_uring_poll_user_data(13, state.fds[13].generation)));
+    state.fds[13].active = true;
+    state.pending_cqes[0].user_data = h2_uring_poll_user_data(13, H2_URING_GENERATION_MASK - 1u);
+    state.pending_cqes[0].res = POLLIN;
+    state.pending_cqes[0].flags = 0u;
+    state.pending_cqe_count = 1u;
+    out_count = 0;
+    h2_uring_finish_saved_cqes(&state, &event, 1u, &out_count);
+    EXPECT_EQ_INT(out_count, 0);
+    EXPECT_TRUE(state.fds[13].active);
+    EXPECT_EQ_U32(state.pending_cqe_count, 0u);
+    return 0;
+}
+
 int main(void)
 {
     EXPECT_EQ_INT(test_poll_remove_preserves_unrelated_cqes(), 0);
@@ -213,6 +263,7 @@ int main(void)
     EXPECT_EQ_INT(test_h2_io_remove_handles_full_ring_of_deferred_cqes(), 0);
     EXPECT_EQ_INT(test_io_uring_drops_stale_cqe_after_fd_reuse(), 0);
     EXPECT_EQ_INT(test_io_uring_clears_active_after_poll_remove(), 0);
+    EXPECT_EQ_INT(test_io_uring_generation_wraps_within_30_bits(), 0);
     puts("io_uring_test: ok");
     return 0;
 }
