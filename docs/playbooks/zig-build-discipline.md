@@ -11,7 +11,7 @@ This playbook is the **contract** every `phase2/zcc/` component must satisfy. CI
 | `zig build smoke` | every job | End-to-end smoke test: compile a small C file with `zcc` and run the resulting binary. |
 | `zig build fmt` | every job | Verify `zig fmt` produces no changes. |
 | `zig build lint` | every job | Run `zig ast-check` on every `.zig` file in `phase2/zcc/src/` and `phase2/zcc/tests/`. |
-| `zig build clean` | not in CI, expected for local hygiene | Remove `zig-cache/`, `zig-out/`, and any generated artefacts. |
+| `zig build clean` | docker subset only; local hygiene otherwise | Remove `zig-cache/`, `zig-out/`, and any generated artefacts. |
 
 A `build.zig` **must** define `test`, `smoke`, `fmt`, and `lint`. `clean` is optional but strongly recommended. The `smoke` target must exercise the full pipeline: lex → parse → sema → codegen → assemble → link → run.
 
