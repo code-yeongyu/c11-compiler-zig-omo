@@ -417,7 +417,7 @@ static int test_connection_rejects_data_on_idle_stream_as_connection_error(void)
     return 0;
 }
 
-static int test_connection_rejects_data_on_closed_stream_without_window_leak(void)
+static int test_connection_decrements_conn_recv_window_on_closed_stream_data(void)
 {
     h2_connection conn;
     uint8_t wire[256];
@@ -442,9 +442,38 @@ static int test_connection_rejects_data_on_closed_stream_without_window_leak(voi
     EXPECT_TRUE(wire_len > 0u);
     EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
 
-    /* then it is reset as a closed stream without consuming connection flow-control */
+    /* then it is reset as a closed stream and connection flow-control is enforced */
     EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 1);
-    EXPECT_EQ_INT(conn.conn_recv_window, recv_window);
+    EXPECT_EQ_INT(conn.conn_recv_window, recv_window - (int32_t)sizeof(data));
+    return 0;
+}
+
+static int test_connection_emits_rst_stream_for_untracked_stream_error(void)
+{
+    h2_connection conn;
+    uint8_t wire[256];
+    size_t wire_len;
+    size_t pos;
+
+    /* given an established connection whose stream table has no reusable slot {[http2-engineer]} */
+    h2_connection_init(&conn);
+    wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+    for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
+        conn.streams[pos].id = (uint32_t)(101u + pos * 2u);
+        conn.streams[pos].state = H2_STREAM_STATE_OPEN;
+    }
+
+    /* when a valid new stream is refused before a stream object can be tracked {[http2-engineer]} */
+    wire_len = append_request_headers(wire, sizeof(wire), 1u, "/");
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+
+    /* then the peer gets RST_STREAM instead of a connection-level GOAWAY {[http2-engineer]} */
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 1);
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_GOAWAY), 0);
     return 0;
 }
 
@@ -520,7 +549,8 @@ int main(void)
     EXPECT_EQ_INT(test_connection_treats_rst_stream_on_idle_as_protocol_error(), 0);
     EXPECT_EQ_INT(test_connection_rejects_rst_stream_on_even_idle_stream(), 0);
     EXPECT_EQ_INT(test_connection_rejects_data_on_idle_stream_as_connection_error(), 0);
-    EXPECT_EQ_INT(test_connection_rejects_data_on_closed_stream_without_window_leak(), 0);
+    EXPECT_EQ_INT(test_connection_decrements_conn_recv_window_on_closed_stream_data(), 0);
+    EXPECT_EQ_INT(test_connection_emits_rst_stream_for_untracked_stream_error(), 0);
     EXPECT_EQ_INT(test_connection_refuses_oversized_path_as_stream_error(), 0);
     EXPECT_EQ_INT(test_connection_reclaims_refused_stream_slots_after_rst_stream(), 0);
     puts("connection_test: ok");

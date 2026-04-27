@@ -406,6 +406,11 @@ static int h2_connection_process_data(h2_connection *conn, const h2_frame_header
         return H2_PROTOCOL_ERROR;
     }
     if (stream->state != H2_STREAM_STATE_OPEN && stream->state != H2_STREAM_STATE_HALF_CLOSED_LOCAL) {
+        if ((size_t)conn->conn_recv_window < header->length) {
+            return H2_FLOW_CONTROL_ERROR;
+        }
+        conn->conn_recv_window -= (int32_t)header->length;
+        (void)h2_connection_refresh_recv_windows(conn, NULL);
         return H2_STREAM_CLOSED;
     }
     if ((size_t)conn->conn_recv_window < header->length) {
@@ -462,14 +467,13 @@ static int h2_connection_reset_stream_error(h2_connection *conn, uint32_t stream
     int ret;
 
     stream = h2_connection_find_stream(conn, stream_id);
-    if (stream == NULL) {
-        return H2_PROTOCOL_ERROR;
-    }
     ret = h2_connection_queue_rst_stream(conn, stream_id, error_code);
     if (ret != H2_OK) {
         return ret;
     }
-    h2_stream_close(stream);
+    if (stream != NULL) {
+        h2_stream_close(stream);
+    }
     return H2_OK;
 }
 
@@ -618,7 +622,7 @@ int h2_connection_feed(h2_connection *conn, const uint8_t *data, size_t data_len
         }
         ret = h2_connection_process_frame(conn, &header, conn->input + H2_FRAME_HEADER_LEN);
         if (ret != H2_OK) {
-            if (h2_connection_is_stream_error(ret) && header.stream_id != 0u && h2_connection_find_stream(conn, header.stream_id) != NULL) {
+            if (h2_connection_is_stream_error(ret) && header.stream_id != 0u) {
                 int rst_ret;
 
                 rst_ret = h2_connection_reset_stream_error(conn, header.stream_id, (uint32_t)ret);
