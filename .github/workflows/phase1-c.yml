@@ -5,90 +5,222 @@ on:
     branches: [master]
     paths:
       - 'phase1/**'
+      - 'scripts/run-in-docker.sh'
       - '.github/workflows/phase1-c.yml'
   pull_request:
     paths:
       - 'phase1/**'
+      - 'scripts/run-in-docker.sh'
       - '.github/workflows/phase1-c.yml'
 
+# Cancel in-flight runs for the same logical branch the moment a new push lands.
+# `head_ref` is set on pull_request events (the source branch); `ref_name` on
+# push events. Falling back across the two unifies the cancel group so a fresh
+# push to a feature branch also cancels the open PR's stale run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
+  guard:
+    name: phase-1 guard
+    runs-on: ubuntu-latest
+    outputs:
+      has_c11_ref: ${{ steps.detect.outputs.has_c11_ref }}
+      has_http2:   ${{ steps.detect.outputs.has_http2 }}
+      has_doom:    ${{ steps.detect.outputs.has_doom }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - id: detect
+        run: |
+          if [ -f phase1/c11-ref/Makefile ]; then
+            echo "has_c11_ref=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "has_c11_ref=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f phase1/http2/Makefile ]; then
+            echo "has_http2=true"    >> "$GITHUB_OUTPUT"
+          else
+            echo "has_http2=false"   >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f phase1/doom/Makefile ]; then
+            echo "has_doom=true"     >> "$GITHUB_OUTPUT"
+          else
+            echo "has_doom=false"    >> "$GITHUB_OUTPUT"
+          fi
+          missing=()
+          [ ! -f phase1/c11-ref/Makefile ] && missing+=("phase1/c11-ref/Makefile")
+          [ ! -f phase1/http2/Makefile ]   && missing+=("phase1/http2/Makefile")
+          [ ! -f phase1/doom/Makefile ]    && missing+=("phase1/doom/Makefile")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf 'phase-1 sub-projects not yet authored — affected jobs will be skipped:\n'
+            printf '  - %s\n' "${missing[@]}"
+          fi
+
   c11-reference-native:
-    name: C11 reference - native gcc / clang (${{ matrix.os }})
+    name: c11-ref / native ${{ matrix.cc }} on ${{ matrix.os }}
+    needs: guard
+    if: needs.guard.outputs.has_c11_ref == 'true'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        cc: [gcc, clang]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Show toolchain
         run: |
           uname -a
-          gcc --version || true
-          clang --version || true
+          ${{ matrix.cc }} --version || true
           make --version || true
-      - name: Build C11 reference
-        if: hashFiles('phase1/c11-ref/Makefile') != ''
+
+      - name: print-platform
         working-directory: phase1/c11-ref
-        run: make all
-      - name: Run C11 reference tests
-        if: hashFiles('phase1/c11-ref/Makefile') != ''
+        run: make CC=${{ matrix.cc }} print-platform
+
+      - name: make all
         working-directory: phase1/c11-ref
-        run: make test
+        run: make CC=${{ matrix.cc }} all
+
+      - name: make test
+        working-directory: phase1/c11-ref
+        run: make CC=${{ matrix.cc }} test
 
   http2-server-native:
-    name: HTTP/2 server - native build (${{ matrix.os }})
+    name: http2 / ${{ matrix.os }} (${{ matrix.io }})
+    needs: guard
+    if: needs.guard.outputs.has_http2 == 'true'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: macos-latest
+            io: kqueue
+          - os: ubuntu-latest
+            io: epoll
+          - os: ubuntu-latest
+            io: io_uring
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build HTTP/2 server
-        if: hashFiles('phase1/http2/Makefile') != ''
-        working-directory: phase1/http2
-        run: make all
-      - name: Run HTTP/2 unit tests
-        if: hashFiles('phase1/http2/Makefile') != ''
-        working-directory: phase1/http2
-        run: make test
-      - name: Run HTTP/2 integration smoke test
-        if: hashFiles('phase1/http2/Makefile') != ''
-        working-directory: phase1/http2
-        run: make smoke
+        with:
+          fetch-depth: 1
 
-  doom-port:
-    name: DOOM headless build & QA
+      # io_uring needs <linux/io_uring.h>; ubuntu-latest ships modern headers
+      # but the liburing-dev package guarantees the user-space wrappers too.
+      - name: Install io_uring headers (Linux io_uring cell only)
+        if: matrix.io == 'io_uring'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends liburing-dev || true
+
+      - name: print-platform
+        working-directory: phase1/http2
+        run: make IO=${{ matrix.io }} print-platform
+
+      - name: make all
+        working-directory: phase1/http2
+        run: make IO=${{ matrix.io }} all
+
+      - name: make test
+        working-directory: phase1/http2
+        run: make IO=${{ matrix.io }} test
+
+      - name: make smoke
+        working-directory: phase1/http2
+        run: make IO=${{ matrix.io }} smoke
+
+  doom-port-headless:
+    name: doom / headless build & smoke
+    needs: guard
+    if: needs.guard.outputs.has_doom == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build DOOM (headless)
-        if: hashFiles('phase1/doom/Makefile') != ''
+        with:
+          fetch-depth: 1
+
+      - name: Install DOOM build deps + Xvfb (headless display)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxext-dev xvfb || true
+
+      - name: make all
         working-directory: phase1/doom
         run: make all
-      - name: Headless DOOM smoke (no display, no WAD)
-        if: hashFiles('phase1/doom/Makefile') != ''
-        working-directory: phase1/doom
-        run: make smoke
 
-  cross-compile-linux-in-docker:
-    name: Linux gcc-in-docker matrix (${{ matrix.image }})
+      # DOOM is X11-linked upstream; xvfb-run gives it a headless display
+      # so `make smoke` can run a -devparm/-timedemo without a real X server.
+      - name: make smoke (under xvfb-run)
+        working-directory: phase1/doom
+        run: xvfb-run -a --server-args='-screen 0 320x200x8' make smoke
+
+  gcc-in-docker:
+    name: docker / gcc-${{ matrix.image }} / ${{ matrix.subproject }}
+    needs: guard
+    if: |
+      needs.guard.outputs.has_c11_ref == 'true' ||
+      needs.guard.outputs.has_http2   == 'true' ||
+      needs.guard.outputs.has_doom    == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        image: [gcc:13, gcc:14]
+        image: ['13', '14']
+        subproject: ['c11-ref', 'http2', 'doom']
     steps:
       - uses: actions/checkout@v4
-      - name: Build everything inside ${{ matrix.image }}
+        with:
+          fetch-depth: 1
+
+      # http2 in the gcc-only image pins IO=epoll (no io_uring kernel privs);
+      # io_uring is exercised by the native ubuntu-latest cell above.
+      # doom inside the gcc image: builds only — the smoke target needs Xvfb,
+      # which the bare gcc image does not ship; smoke is covered by the native
+      # ubuntu-latest job above.
+      # Per-cell gate (matrix context only available at step level, not job level).
+      - name: Build & test ${{ matrix.subproject }} inside gcc:${{ matrix.image }}
+        if: |
+          (matrix.subproject == 'c11-ref' && needs.guard.outputs.has_c11_ref == 'true') ||
+          (matrix.subproject == 'http2'   && needs.guard.outputs.has_http2   == 'true') ||
+          (matrix.subproject == 'doom'    && needs.guard.outputs.has_doom    == 'true')
+        env:
+          IMAGE: gcc:${{ matrix.image }}
+          SUB:   ${{ matrix.subproject }}
         run: |
-          docker run --rm -v ${{ github.workspace }}:/work -w /work ${{ matrix.image }} bash -c '
-            set -euxo pipefail
-            for d in phase1/c11-ref phase1/http2 phase1/doom; do
-              if [ -f "$d/Makefile" ]; then
-                make -C "$d" all
-                make -C "$d" test || true
+          set -euo pipefail
+          MAKE_VARS=()
+          if [ "${SUB}" = "http2" ]; then
+            MAKE_VARS+=(IO=epoll)
+          fi
+          DOCKER_PRE=":"
+          if [ "${SUB}" = "doom" ]; then
+            DOCKER_PRE="apt-get update && apt-get install -y --no-install-recommends libx11-dev libxext-dev"
+          fi
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w "/work/phase1/${SUB}" \
+            "${IMAGE}" \
+            bash -c "
+              set -euxo pipefail
+              ${DOCKER_PRE}
+              make ${MAKE_VARS[*]} print-platform || true
+              make ${MAKE_VARS[*]} all
+              make ${MAKE_VARS[*]} test
+              if [ \"${SUB}\" != \"doom\" ] && make -n ${MAKE_VARS[*]} smoke >/dev/null 2>&1; then
+                make ${MAKE_VARS[*]} smoke
+              else
+                echo '::notice::skipping smoke for ${SUB} in docker (no display / no smoke target)'
               fi
-            done
-          '
+            "
