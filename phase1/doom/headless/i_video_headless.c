@@ -10,6 +10,7 @@
 static FILE* headless_log;
 static uint32_t frame_crc;
 static int frame_count;
+static int max_frames = -1;
 
 static uint32_t crc32_update(uint32_t crc, const byte* data, size_t len)
 {
@@ -63,12 +64,26 @@ void I_UpdateNoBlit(void)
 
 void I_FinishUpdate(void)
 {
+    if (max_frames < 0)
+    {
+        const char* value = getenv("DOOM_HEADLESS_MAX_FRAMES");
+        max_frames = value ? atoi(value) : 0;
+    }
+
     frame_crc = crc32_update(frame_crc, screens[0], SCREENWIDTH * SCREENHEIGHT);
     ++frame_count;
     if ((frame_count % 32) == 0)
     {
         fprintf(log_file(), "frame=%d crc32=%08x\n", frame_count, frame_crc);
         fflush(headless_log);
+    }
+
+    if (max_frames && frame_count >= max_frames)
+    {
+        fprintf(log_file(), "headless max frames reached (%d)\n", frame_count);
+        fflush(headless_log);
+        I_ShutdownGraphics();
+        exit(0);
     }
 }
 
