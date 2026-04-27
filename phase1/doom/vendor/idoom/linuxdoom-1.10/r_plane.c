@@ -297,7 +297,7 @@ R_CheckPlane
     }
 
     for (x=intrl ; x<= intrh ; x++)
-	if (pl->top[x] != 0xff)
+	if (pl->top[x+1] != 0xff)
 	    break;
 
     if (x > intrh)
@@ -405,8 +405,8 @@ void R_DrawPlanes (void)
 	    dc_texturemid = skytexturemid;
 	    for (x=pl->minx ; x <= pl->maxx ; x++)
 	    {
-		dc_yl = pl->top[x];
-		dc_yh = pl->bottom[x];
+		dc_yl = pl->top[x+1];
+		dc_yh = pl->bottom[x+1];
 
 		if (dc_yl <= dc_yh)
 		{
@@ -435,17 +435,17 @@ void R_DrawPlanes (void)
 
 	planezlight = zlight[light];
 
-	pl->top[pl->maxx+1] = 0xff;
-	pl->top[pl->minx-1] = 0xff;
+	pl->top[pl->maxx+2] = 0xff;
+	pl->top[pl->minx] = 0xff;
 		
 	stop = pl->maxx + 1;
 
 	for (x=pl->minx ; x<= stop ; x++)
 	{
-	    R_MakeSpans(x,pl->top[x-1],
-			pl->bottom[x-1],
-			pl->top[x],
-			pl->bottom[x]);
+	    R_MakeSpans(x,pl->top[x],
+			pl->bottom[x],
+			pl->top[x+1],
+			pl->bottom[x+1]);
 	}
 	
 	Z_ChangeTag (ds_source, PU_CACHE);

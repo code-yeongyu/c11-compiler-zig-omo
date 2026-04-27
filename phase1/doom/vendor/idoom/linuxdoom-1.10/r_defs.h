@@ -465,17 +465,12 @@ typedef struct
   int			minx;
   int			maxx;
   
-  // leave pads for [minx-1]/[maxx+1]
-  
-  byte		pad1;
+  // leave sentinel slots for [minx-1]/[maxx+1]
   // Here lies the rub for all
   //  dynamic resize/change of resolution.
-  byte		top[SCREENWIDTH];
-  byte		pad2;
-  byte		pad3;
+  byte		top[SCREENWIDTH+2];
   // See above.
-  byte		bottom[SCREENWIDTH];
-  byte		pad4;
+  byte		bottom[SCREENWIDTH+2];
 
 } visplane_t;
 
