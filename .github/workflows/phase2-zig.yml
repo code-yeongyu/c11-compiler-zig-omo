@@ -21,21 +21,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_zig: ${{ steps.detect.outputs.has_zig }}
+      should_run_phase2: ${{ steps.detect.outputs.should_run_phase2 }}
     steps:
       - uses: actions/checkout@v4
       - id: detect
         run: |
-          if [ -f phase2/build.zig ]; then
+          if [ -f phase2/zcc/build.zig ]; then
             echo "has_zig=true" >> "$GITHUB_OUTPUT"
+            echo "should_run_phase2=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_zig=false" >> "$GITHUB_OUTPUT"
-            echo "phase2/build.zig not present yet — phase-2 build/test skipped."
+            echo "should_run_phase2=false" >> "$GITHUB_OUTPUT"
+            echo "phase2/zcc/build.zig not present yet — phase-2 build/test skipped."
           fi
 
   build-and-test:
     name: zcc build & test (${{ matrix.os }})
     needs: guard
-    if: needs.guard.outputs.has_zig == 'true'
+    if: needs.guard.outputs.should_run_phase2 == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -48,11 +51,27 @@ jobs:
         with:
           version: 0.16.0
       - name: zig fmt --check
-        working-directory: phase2
-        run: zig fmt --check src tests build.zig
+        working-directory: phase2/zcc
+        run: zig build fmt
       - name: zig build
-        working-directory: phase2
-        run: zig build -Drelease-safe
+        working-directory: phase2/zcc
+        run: zig build
       - name: zig build test
-        working-directory: phase2
+        working-directory: phase2/zcc
         run: zig build test --summary all
+      - name: zig build smoke
+        working-directory: phase2/zcc
+        run: zig build smoke --summary all
+      - name: zig build lint
+        working-directory: phase2/zcc
+        run: zig build lint --summary all
+
+  docker-gcc-14:
+    name: phase2-zig / docker / gcc-14 / zcc
+    needs: guard
+    if: needs.guard.outputs.should_run_phase2 == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: zcc in gcc:14 container
+        run: IMAGE=gcc:14 bash scripts/run-in-docker.sh phase2 zcc clean test smoke
