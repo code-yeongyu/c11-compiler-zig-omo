@@ -7,8 +7,17 @@ CSTD ?= c11
 CFLAGS_BASE ?= -std=$(CSTD) -pedantic -Wall -Wextra -Werror -O2 -g
 endif
 
-override CFLAGS += $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
-override LDFLAGS += $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+ifeq ($(filter command line environment,$(origin CFLAGS)),)
+CFLAGS ?= $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+else
+override CFLAGS := $(CFLAGS) $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+endif
+
+ifeq ($(filter command line environment,$(origin LDFLAGS)),)
+LDFLAGS ?= $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+else
+override LDFLAGS := $(LDFLAGS) $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+endif
 
 PROGRAMS := \
 	001_generic_selection \
@@ -43,6 +52,7 @@ CLANG ?= clang
 BUILD_DIR := .build
 TEST_CC ?= $(CC)
 LDLIBS ?= -lm
+DEPS := $(ALL_C:%=$(BUILD_DIR)/gcc/%.d) $(ALL_C:%=$(BUILD_DIR)/clang/%.d)
 
 .PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression
 
@@ -59,7 +69,7 @@ check-clang:
 
 negative: check-negative-gcc check-negative-filename-regression
 
-check-negative-gcc:
+check-negative-gcc: $(NEGATIVE_SRCS)
 	@mkdir -p $(BUILD_DIR)/negative
 	@set -e; for src in $(NEGATIVE_SRCS); do \
 		name=$$(basename $$src .c); \
@@ -79,7 +89,7 @@ check-negative-gcc:
 		printf 'OK negative gcc: %s rejected as expected\n' $$src; \
 	done
 
-check-negative-clang:
+check-negative-clang: $(NEGATIVE_SRCS)
 	@mkdir -p $(BUILD_DIR)/negative
 	@set -e; for src in $(NEGATIVE_SRCS); do \
 		name=$$(basename $$src .c); \
@@ -141,11 +151,11 @@ check-negative-filename-regression:
 
 $(BUILD_DIR)/gcc/%.c.o: %.c
 	@mkdir -p $(dir $@)
-	$(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $< -o $@
+	$(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 $(BUILD_DIR)/clang/%.c.o: %.c
 	@mkdir -p $(dir $@)
-	$(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $< -o $@
+	$(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 test: negative $(TESTS)
 	@set -e; for t in $(TESTS); do echo "==> $$t"; "./$$t" || exit 1; done
@@ -155,3 +165,5 @@ test: negative $(TESTS)
 
 clean:
 	rm -rf $(BUILD_DIR) $(TESTS) *.dSYM
+
+-include $(DEPS)
