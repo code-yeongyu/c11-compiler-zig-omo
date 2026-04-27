@@ -3,6 +3,11 @@
 #include "sounds.h"
 #include "w_wad.h"
 
+#ifdef SNDSERV
+FILE* sndserver = 0;
+char* sndserver_filename = "./sndserver ";
+#endif
+
 void I_InitSound(void) {}
 void I_UpdateSound(void) {}
 void I_SubmitSound(void) {}
