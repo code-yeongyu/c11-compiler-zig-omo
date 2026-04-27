@@ -334,7 +334,7 @@ static int test_connection_rejects_non_monotonic_stream_id(void)
     return 0;
 }
 
-static int test_connection_ignores_rst_stream_for_unopened_stream(void)
+static int test_connection_rejects_rst_stream_for_unopened_stream(void)
 {
     h2_connection conn;
     uint8_t wire[256];
@@ -351,13 +351,103 @@ static int test_connection_ignores_rst_stream_for_unopened_stream(void)
     /* when RST_STREAM arrives for that unopened stream */
     wire_len = h2_frame_encode_rst_stream(wire, sizeof(wire), 99u, H2_CANCEL);
     EXPECT_TRUE(wire_len > 0u);
-    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_PROTOCOL_ERROR);
 
-    /* then no ghost stream slot is synthesized */
+    /* then no ghost stream slot is synthesized and the connection is failed */
     for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
         EXPECT_TRUE(conn.streams[pos].id != 99u);
     }
-    EXPECT_EQ_SIZE(h2_connection_output_len(&conn), 0u);
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_GOAWAY), 1);
+    return 0;
+}
+
+static int test_connection_rejects_data_on_idle_stream_as_connection_error(void)
+{
+    h2_connection conn;
+    uint8_t wire[256];
+    size_t wire_len;
+    const uint8_t data[] = { 'x' };
+
+    /* given an established connection with no opened stream 1 */
+    h2_connection_init(&conn);
+    wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+
+    /* when DATA arrives on the idle stream */
+    wire_len = h2_frame_encode_data(wire, sizeof(wire), 1u, 0u, data, sizeof(data));
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_PROTOCOL_ERROR);
+
+    /* then the peer gets GOAWAY rather than a stream-level RST_STREAM */
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_GOAWAY), 1);
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 0);
+    return 0;
+}
+
+static int test_connection_rejects_data_on_closed_stream_without_window_leak(void)
+{
+    h2_connection conn;
+    uint8_t wire[256];
+    size_t wire_len;
+    const uint8_t data[] = { 'x' };
+    int32_t recv_window;
+
+    /* given stream 1 is known and closed after a complete request/response */
+    h2_connection_init(&conn);
+    wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+    wire_len = append_request_headers(wire, sizeof(wire), 1u, "/");
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+    recv_window = conn.conn_recv_window;
+
+    /* when DATA arrives later for that closed-known stream */
+    wire_len = h2_frame_encode_data(wire, sizeof(wire), 1u, 0u, data, sizeof(data));
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+
+    /* then it is reset as a closed stream without consuming connection flow-control */
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 1);
+    EXPECT_EQ_INT(conn.conn_recv_window, recv_window);
+    return 0;
+}
+
+static int test_connection_reclaims_refused_stream_slots_after_rst_stream(void)
+{
+    h2_connection conn;
+    uint8_t wire[1024];
+    size_t wire_len;
+    char path[H2_STREAM_PATH_CAP + 1u];
+    uint32_t stream_id;
+    int index;
+
+    /* given an established connection and requests whose :path exceeds the stream cap */
+    memset(path, 'a', sizeof(path) - 1u);
+    path[0] = '/';
+    path[sizeof(path) - 1u] = '\0';
+    h2_connection_init(&conn);
+    wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+
+    /* when more refused streams arrive than the slot table can hold */
+    stream_id = 1u;
+    for (index = 0; index < 140; index++) {
+        wire_len = append_request_headers(wire, sizeof(wire), stream_id, path);
+        EXPECT_TRUE(wire_len > 0u);
+        EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+
+        /* then each refused stream is reset and its slot is reusable */
+        EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 1);
+        h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+        stream_id += 2u;
+    }
     return 0;
 }
 
@@ -396,8 +486,11 @@ int main(void)
     EXPECT_EQ_INT(test_connection_reclaims_closed_stream_slots(), 0);
     EXPECT_EQ_INT(test_connection_defers_blocked_response_data_until_window_update(), 0);
     EXPECT_EQ_INT(test_connection_rejects_non_monotonic_stream_id(), 0);
-    EXPECT_EQ_INT(test_connection_ignores_rst_stream_for_unopened_stream(), 0);
+    EXPECT_EQ_INT(test_connection_rejects_rst_stream_for_unopened_stream(), 0);
+    EXPECT_EQ_INT(test_connection_rejects_data_on_idle_stream_as_connection_error(), 0);
+    EXPECT_EQ_INT(test_connection_rejects_data_on_closed_stream_without_window_leak(), 0);
     EXPECT_EQ_INT(test_connection_refuses_oversized_path_as_stream_error(), 0);
+    EXPECT_EQ_INT(test_connection_reclaims_refused_stream_slots_after_rst_stream(), 0);
     puts("connection_test: ok");
     return 0;
 }

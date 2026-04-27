@@ -124,7 +124,7 @@ static h2_stream *h2_connection_get_stream(h2_connection *conn, uint32_t stream_
         return stream;
     }
     for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
-        if (conn->streams[pos].id == 0u) {
+        if (conn->streams[pos].id == 0u || conn->streams[pos].state == H2_STREAM_STATE_CLOSED) {
             h2_stream_init(&conn->streams[pos], stream_id, conn->initial_stream_window);
             return &conn->streams[pos];
         }
@@ -183,7 +183,7 @@ static int h2_connection_apply_settings(h2_connection *conn, const h2_frame_head
             }
             delta = (int64_t)settings[pos].value - (int64_t)conn->initial_stream_window;
             for (stream_pos = 0u; stream_pos < H2_CONN_MAX_STREAMS; stream_pos++) {
-                if (conn->streams[stream_pos].id != 0u) {
+                if (conn->streams[stream_pos].id != 0u && conn->streams[stream_pos].state != H2_STREAM_STATE_CLOSED) {
                     int64_t new_window;
 
                     new_window = (int64_t)conn->streams[stream_pos].send_window + delta;
@@ -294,7 +294,7 @@ static int h2_connection_flush_deferred_responses(h2_connection *conn)
     size_t pos;
 
     for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
-        if (conn->streams[pos].id != 0u && conn->streams[pos].response_body_deferred) {
+        if (conn->streams[pos].id != 0u && conn->streams[pos].state != H2_STREAM_STATE_CLOSED && conn->streams[pos].response_body_deferred) {
             int ret;
 
             ret = h2_connection_queue_response(conn, &conn->streams[pos]);
@@ -401,9 +401,12 @@ static int h2_connection_process_data(h2_connection *conn, const h2_frame_header
     if (ret != H2_OK) {
         return ret;
     }
-    stream = h2_connection_get_stream(conn, header->stream_id);
+    stream = h2_connection_find_stream(conn, header->stream_id);
     if (stream == NULL) {
-        return H2_REFUSED_STREAM;
+        return H2_PROTOCOL_ERROR;
+    }
+    if (stream->state != H2_STREAM_STATE_OPEN && stream->state != H2_STREAM_STATE_HALF_CLOSED_LOCAL) {
+        return H2_STREAM_CLOSED;
     }
     if ((size_t)conn->conn_recv_window < header->length) {
         return H2_FLOW_CONTROL_ERROR;
@@ -491,6 +494,8 @@ static int h2_connection_process_frame(h2_connection *conn, const h2_frame_heade
         stream = h2_connection_find_stream(conn, header->stream_id);
         if (stream != NULL) {
             h2_stream_close(stream);
+        } else {
+            return H2_PROTOCOL_ERROR;
         }
         (void)error_code;
         return H2_OK;
@@ -583,13 +588,14 @@ int h2_connection_feed(h2_connection *conn, const uint8_t *data, size_t data_len
         }
         ret = h2_connection_process_frame(conn, &header, conn->input + H2_FRAME_HEADER_LEN);
         if (ret != H2_OK) {
-            if (h2_connection_is_stream_error(ret) && header.stream_id != 0u) {
+            if (h2_connection_is_stream_error(ret) && header.stream_id != 0u && h2_connection_find_stream(conn, header.stream_id) != NULL) {
                 int rst_ret;
 
                 rst_ret = h2_connection_queue_rst_stream(conn, header.stream_id, (uint32_t)ret);
                 if (rst_ret != H2_OK) {
                     return rst_ret;
                 }
+                h2_stream_close(h2_connection_find_stream(conn, header.stream_id));
             } else {
                 (void)h2_connection_queue_goaway(conn, (uint32_t)ret);
                 return ret;

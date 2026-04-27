@@ -16,13 +16,21 @@
 #define H2_URING_ENTRIES 256u
 #define H2_URING_MAX_FDS 4096u
 #define H2_URING_CANCEL_FLAG UINT64_C(0x8000000000000000)
+#define H2_URING_TIMEOUT_FLAG UINT64_C(0x4000000000000000)
 #define H2_URING_FD_MASK UINT64_C(0x00000000ffffffff)
+#define H2_URING_SAVED_CQES 64u
 
 typedef struct h2_uring_fd_state {
     bool used;
     bool active;
     uint32_t events;
 } h2_uring_fd_state;
+
+typedef struct h2_uring_saved_cqe {
+    uint64_t user_data;
+    int32_t res;
+    uint32_t flags;
+} h2_uring_saved_cqe;
 
 typedef struct h2_uring_state {
     int ring_fd;
@@ -42,6 +50,9 @@ typedef struct h2_uring_state {
     unsigned *cq_tail;
     unsigned *cq_ring_mask;
     struct io_uring_cqe *cqes;
+    struct __kernel_timespec timeout;
+    h2_uring_saved_cqe pending_cqes[H2_URING_SAVED_CQES];
+    unsigned pending_cqe_count;
     h2_uring_fd_state fds[H2_URING_MAX_FDS];
 } h2_uring_state;
 
@@ -70,6 +81,11 @@ static uint64_t h2_uring_cancel_user_data(int fd)
 static bool h2_uring_is_cancel_user_data(uint64_t user_data)
 {
     return (user_data & H2_URING_CANCEL_FLAG) != 0u;
+}
+
+static bool h2_uring_is_timeout_user_data(uint64_t user_data)
+{
+    return (user_data & H2_URING_TIMEOUT_FLAG) != 0u;
 }
 
 static int h2_uring_user_data_fd(uint64_t user_data)
@@ -239,6 +255,9 @@ static void h2_uring_finish_cqe(h2_uring_state *state, const struct io_uring_cqe
     int result;
 
     user_data = cqe->user_data;
+    if (h2_uring_is_timeout_user_data(user_data)) {
+        return;
+    }
     fd = h2_uring_user_data_fd(user_data);
     result = cqe->res;
     if (fd < 0 || fd >= (int)H2_URING_MAX_FDS) {
@@ -258,12 +277,49 @@ static void h2_uring_finish_cqe(h2_uring_state *state, const struct io_uring_cqe
     }
 }
 
+static int h2_uring_save_cqe(h2_uring_state *state, const struct io_uring_cqe *cqe)
+{
+    if (state->pending_cqe_count >= H2_URING_SAVED_CQES) {
+        errno = EAGAIN;
+        return -1;
+    }
+    state->pending_cqes[state->pending_cqe_count].user_data = cqe->user_data;
+    state->pending_cqes[state->pending_cqe_count].res = cqe->res;
+    state->pending_cqes[state->pending_cqe_count].flags = cqe->flags;
+    state->pending_cqe_count++;
+    return 0;
+}
+
+static void h2_uring_finish_saved_cqes(h2_uring_state *state, h2_event *events, size_t event_cap, int *out_count)
+{
+    unsigned pos;
+    unsigned keep;
+
+    pos = 0u;
+    keep = 0u;
+    while (pos < state->pending_cqe_count) {
+        if ((size_t)*out_count < event_cap) {
+            struct io_uring_cqe cqe;
+
+            memset(&cqe, 0, sizeof(cqe));
+            cqe.user_data = state->pending_cqes[pos].user_data;
+            cqe.res = state->pending_cqes[pos].res;
+            cqe.flags = state->pending_cqes[pos].flags;
+            h2_uring_finish_cqe(state, &cqe, events, event_cap, out_count);
+        } else {
+            state->pending_cqes[keep] = state->pending_cqes[pos];
+            keep++;
+        }
+        pos++;
+    }
+    state->pending_cqe_count = keep;
+}
+
 static int h2_uring_drain_until_cancel(h2_uring_state *state, int fd)
 {
     for (;;) {
         unsigned head;
         unsigned tail;
-        int ignored;
 
         if (*state->cq_head == *state->cq_tail) {
             if (h2_uring_enter(state->ring_fd, 0u, 1u, IORING_ENTER_GETEVENTS, NULL, 0u) < 0) {
@@ -273,7 +329,6 @@ static int h2_uring_drain_until_cancel(h2_uring_state *state, int fd)
                 return -1;
             }
         }
-        ignored = 0;
         head = *state->cq_head;
         tail = *state->cq_tail;
         while (head != tail) {
@@ -282,12 +337,15 @@ static int h2_uring_drain_until_cancel(h2_uring_state *state, int fd)
 
             cqe = &state->cqes[head & *state->cq_ring_mask];
             user_data = cqe->user_data;
-            head++;
-            h2_uring_finish_cqe(state, cqe, NULL, 0u, &ignored);
             if (user_data == h2_uring_cancel_user_data(fd)) {
+                head++;
                 *state->cq_head = head;
                 return cqe->res == -ENOENT || cqe->res >= 0 ? 0 : -1;
             }
+            if (h2_uring_save_cqe(state, cqe) != 0) {
+                return -1;
+            }
+            head++;
         }
         *state->cq_head = head;
     }
@@ -345,6 +403,26 @@ static int h2_uring_submit_missing(h2_uring_state *state)
     return h2_uring_enter(state->ring_fd, submitted, 0u, 0u, NULL, 0u) < 0 ? -1 : 0;
 }
 
+#if !defined(IORING_ENTER_EXT_ARG) || defined(H2_URING_FORCE_TIMEOUT_SQE)
+static int h2_uring_submit_timeout_sqe(h2_uring_state *state, int timeout_ms)
+{
+    struct io_uring_sqe *sqe;
+    sqe = h2_uring_get_sqe(state);
+    if (sqe == NULL) {
+        errno = EAGAIN;
+        return -1;
+    }
+    memset(sqe, 0, sizeof(*sqe));
+    state->timeout.tv_sec = timeout_ms / 1000;
+    state->timeout.tv_nsec = (long long)(timeout_ms % 1000) * 1000000ll;
+    sqe->opcode = IORING_OP_TIMEOUT;
+    sqe->addr = (uint64_t)(uintptr_t)&state->timeout;
+    sqe->len = 1u;
+    sqe->user_data = H2_URING_TIMEOUT_FLAG;
+    return h2_uring_enter(state->ring_fd, 1u, 1u, IORING_ENTER_GETEVENTS, NULL, 0u);
+}
+#endif
+
 static int h2_uring_wait_for_event(h2_uring_state *state, int timeout_ms)
 {
     if (timeout_ms == 0) {
@@ -353,7 +431,7 @@ static int h2_uring_wait_for_event(h2_uring_state *state, int timeout_ms)
     if (timeout_ms < 0) {
         return h2_uring_enter(state->ring_fd, 0u, 1u, IORING_ENTER_GETEVENTS, NULL, 0u);
     }
-#ifdef IORING_ENTER_EXT_ARG
+#if defined(IORING_ENTER_EXT_ARG) && !defined(H2_URING_FORCE_TIMEOUT_SQE)
     {
         struct __kernel_timespec timeout;
         struct io_uring_getevents_arg arg;
@@ -365,8 +443,7 @@ static int h2_uring_wait_for_event(h2_uring_state *state, int timeout_ms)
         return h2_uring_enter(state->ring_fd, 0u, 1u, IORING_ENTER_GETEVENTS | IORING_ENTER_EXT_ARG, &arg, sizeof(arg));
     }
 #else
-    (void)timeout_ms;
-    return h2_uring_enter(state->ring_fd, 0u, 1u, IORING_ENTER_GETEVENTS, NULL, 0u);
+    return h2_uring_submit_timeout_sqe(state, timeout_ms);
 #endif
 }
 
@@ -398,6 +475,7 @@ int h2_io_wait(h2_io *io, h2_event *events, size_t event_cap, int timeout_ms)
         }
     }
     out_count = 0;
+    h2_uring_finish_saved_cqes(state, events, event_cap, &out_count);
     head = *state->cq_head;
     tail = *state->cq_tail;
     while (head != tail && (size_t)out_count < event_cap) {

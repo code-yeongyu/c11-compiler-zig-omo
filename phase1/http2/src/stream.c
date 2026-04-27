@@ -17,7 +17,12 @@ void h2_stream_close(h2_stream *stream)
     if (stream == NULL) {
         return;
     }
-    memset(stream, 0, sizeof(*stream));
+    stream->send_window = 0;
+    stream->recv_window = 0;
+    stream->response_headers_sent = false;
+    stream->response_body_deferred = false;
+    stream->response_sent = false;
+    stream->path[0] = '\0';
     stream->state = H2_STREAM_STATE_CLOSED;
 }
 

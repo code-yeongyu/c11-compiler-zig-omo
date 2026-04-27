@@ -22,7 +22,7 @@ static int test_send_window_add_avoids_signed_overflow(void)
     return 0;
 }
 
-static int test_closed_stream_reclaims_slot_id(void)
+static int test_closed_stream_preserves_known_stream_id(void)
 {
     h2_stream stream;
 
@@ -33,8 +33,8 @@ static int test_closed_stream_reclaims_slot_id(void)
     /* when the server sends END_STREAM */
     EXPECT_EQ_INT(h2_stream_send_end_stream(&stream), H2_OK);
 
-    /* then the slot id is cleared for reuse */
-    EXPECT_EQ_U32(stream.id, 0u);
+    /* then the closed state is recorded without making the stream look unopened */
+    EXPECT_EQ_U32(stream.id, 3u);
     EXPECT_EQ_INT(stream.state, H2_STREAM_STATE_CLOSED);
     return 0;
 }
@@ -42,7 +42,7 @@ static int test_closed_stream_reclaims_slot_id(void)
 int main(void)
 {
     EXPECT_EQ_INT(test_send_window_add_avoids_signed_overflow(), 0);
-    EXPECT_EQ_INT(test_closed_stream_reclaims_slot_id(), 0);
+    EXPECT_EQ_INT(test_closed_stream_preserves_known_stream_id(), 0);
     puts("stream_test: ok");
     return 0;
 }

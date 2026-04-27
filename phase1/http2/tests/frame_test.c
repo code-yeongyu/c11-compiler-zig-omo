@@ -242,6 +242,29 @@ static int test_push_promise_frame(void)
     return 0;
 }
 
+static int test_push_promise_encoder_rejects_zero_promised_stream(void)
+{
+    const uint8_t block[] = { 0x84u };
+    uint8_t wire[64];
+
+    /* given a PUSH_PROMISE for reserved promised stream 0 */
+    /* when asking the encoder to serialize it */
+    /* then no forbidden PUSH_PROMISE bytes are produced */
+    EXPECT_EQ_SIZE(h2_frame_encode_push_promise(wire, sizeof(wire), 1u, H2_FLAG_END_HEADERS, 0u, block, sizeof(block)), 0u);
+    return 0;
+}
+
+static int test_push_promise_encoder_rejects_wrapping_payload_length(void)
+{
+    uint8_t wire[64];
+
+    /* given a PUSH_PROMISE header block length near SIZE_MAX */
+    /* when the encoder checks the promised-stream-id prefix length */
+    /* then unsigned addition overflow is rejected before copying */
+    EXPECT_EQ_SIZE(h2_frame_encode_push_promise(wire, sizeof(wire), 1u, H2_FLAG_END_HEADERS, 2u, NULL, (size_t)-1), 0u);
+    return 0;
+}
+
 static int test_ping_frame(void)
 {
     const uint8_t opaque[8] = { 'p', 'i', 'n', 'g', 'd', 'a', 't', 'a' };
@@ -367,6 +390,8 @@ int main(void)
     EXPECT_EQ_INT(test_rst_stream_frame(), 0);
     EXPECT_EQ_INT(test_settings_frame(), 0);
     EXPECT_EQ_INT(test_push_promise_frame(), 0);
+    EXPECT_EQ_INT(test_push_promise_encoder_rejects_zero_promised_stream(), 0);
+    EXPECT_EQ_INT(test_push_promise_encoder_rejects_wrapping_payload_length(), 0);
     EXPECT_EQ_INT(test_ping_frame(), 0);
     EXPECT_EQ_INT(test_goaway_frame(), 0);
     EXPECT_EQ_INT(test_window_update_frame(), 0);

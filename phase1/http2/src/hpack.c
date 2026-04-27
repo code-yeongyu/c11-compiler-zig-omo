@@ -51,7 +51,15 @@ int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix
         if (shift >= 28u && (byte & 0x7fu) > 15u) {
             return H2_COMPRESSION_ERROR;
         }
-        result += ((uint32_t)(byte & 0x7fu)) << shift;
+        {
+            uint32_t addition;
+
+            addition = ((uint32_t)(byte & 0x7fu)) << shift;
+            if (addition > UINT32_MAX - result) {
+                return H2_COMPRESSION_ERROR;
+            }
+            result += addition;
+        }
         pos++;
         if ((byte & 0x80u) == 0u) {
             *value = result;

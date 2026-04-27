@@ -34,7 +34,12 @@ DEPS := \
   $(BUILD_DIR)/connection_test.d \
   $(BUILD_DIR)/e2e_test.d
 
-.PHONY: all test e2e cli cflags-smoke smoke clean print-backend
+ifeq ($(PLATFORM),linux)
+  LINUX_TESTS := $(BUILD_DIR)/io_uring_test
+  DEPS += $(BUILD_DIR)/io_uring_test.d
+endif
+
+.PHONY: all test e2e cli cflags-smoke makefile-test smoke clean print-backend
 
 all: $(BUILD_DIR)/h2d
 
@@ -59,11 +64,18 @@ $(BUILD_DIR)/connection_test: tests/connection_test.c $(TEST_COMMON) | $(BUILD_D
 $(BUILD_DIR)/e2e_test: tests/e2e_test.c $(TEST_COMMON) | $(BUILD_DIR)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -MF $(BUILD_DIR)/e2e_test.d -MT $@ tests/e2e_test.c $(TEST_COMMON) -o $@ $(LDFLAGS)
 
-test: $(BUILD_DIR)/frame_test $(BUILD_DIR)/hpack_test $(BUILD_DIR)/stream_test $(BUILD_DIR)/connection_test
+$(BUILD_DIR)/io_uring_test: tests/io_uring_test.c src/io_uring.c | $(BUILD_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DHTTP2_BACKEND_IO_URING -MF $(BUILD_DIR)/io_uring_test.d -MT $@ tests/io_uring_test.c -o $@ $(LDFLAGS)
+
+makefile-test:
+	@case "$$($(MAKE) -n cflags-smoke)" in *"-std=$(CSTD)"*"-fsanitize=address"*) ;; *) echo "cflags-smoke must compose base CFLAGS with ASan"; exit 1;; esac
+
+test: $(BUILD_DIR)/frame_test $(BUILD_DIR)/hpack_test $(BUILD_DIR)/stream_test $(BUILD_DIR)/connection_test $(BUILD_DIR)/e2e_test $(LINUX_TESTS) makefile-test
 	$(BUILD_DIR)/frame_test
 	$(BUILD_DIR)/hpack_test
 	$(BUILD_DIR)/stream_test
 	$(BUILD_DIR)/connection_test
+	$(LINUX_TESTS)
 
 e2e: $(BUILD_DIR)/e2e_test
 	bash tests/e2e_test.sh
@@ -73,7 +85,7 @@ cli: $(BUILD_DIR)/h2d
 
 cflags-smoke:
 	$(MAKE) clean
-	$(MAKE) CFLAGS='-O2 -g -fsanitize=address' all
+	$(MAKE) CFLAGS='$(CFLAGS) -fsanitize=address' all
 
 smoke: $(BUILD_DIR)/h2d
 	bash tests/smoke.sh

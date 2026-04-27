@@ -477,7 +477,7 @@ size_t h2_frame_encode_push_promise(uint8_t *wire, size_t cap, uint32_t stream_i
 {
     uint8_t payload[H2_DEFAULT_MAX_FRAME_SIZE];
 
-    if (stream_id == 0u || (flags & H2_FLAG_PADDED) != 0u || header_block_len + 4u > sizeof(payload) || (header_block_len > 0u && header_block == NULL)) {
+    if (stream_id == 0u || promised_stream_id == 0u || (flags & H2_FLAG_PADDED) != 0u || header_block_len > SIZE_MAX - 4u || header_block_len > sizeof(payload) - 4u || (header_block_len > 0u && header_block == NULL)) {
         return 0u;
     }
     h2_write_u32(payload, promised_stream_id & 0x7fffffffu);
