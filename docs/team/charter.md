@@ -42,7 +42,9 @@ Nothing is compromised. Phase N+1 cannot begin until Phase N's success criteria 
 
 ## 3. Branching & PR rules
 
-- Master is protected by process. **No direct commits to master**.
+- Master is protected by **GitHub branch protection**. **No direct commits to master**, including by Sisyphus (the lead). Every change — even one-line CI tweaks — goes via PR.
+- Master may only contain commits whose CI is fully green at merge time.
+- Identity discipline: every commit, PR, comment, and review must be tagged `[your-name]` / `{[your-name]} ...`. Use **your real role name**, never `[Sisyphus]` unless you literally are the lead.
 - Each work item lives in a feature branch named `phase{N}/{topic}/{short-desc}`, e.g. `phase1/doom/sdl-loop`.
 - We use **git worktrees** for parallel work. See `docs/playbooks/git-worktrees.md`.
 - PRs **must**:

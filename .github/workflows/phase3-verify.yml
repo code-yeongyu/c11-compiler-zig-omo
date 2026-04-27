@@ -13,8 +13,33 @@ on:
       - '.github/workflows/phase3-verify.yml'
 
 jobs:
+  guard:
+    name: phase-3 guard
+    runs-on: ubuntu-latest
+    outputs:
+      has_diff: ${{ steps.detect.outputs.has_diff }}
+      has_cross: ${{ steps.detect.outputs.has_cross }}
+      has_zig: ${{ steps.detect.outputs.has_zig }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: |
+          [ -f phase3/run-diff.sh ] && echo "has_diff=true" >> "$GITHUB_OUTPUT" || echo "has_diff=false" >> "$GITHUB_OUTPUT"
+          [ -f phase3/run-cross-docker.sh ] && echo "has_cross=true" >> "$GITHUB_OUTPUT" || echo "has_cross=false" >> "$GITHUB_OUTPUT"
+          [ -f phase2/build.zig ] && echo "has_zig=true" >> "$GITHUB_OUTPUT" || echo "has_zig=false" >> "$GITHUB_OUTPUT"
+          missing=()
+          [ ! -f phase3/run-diff.sh ] && missing+=("phase3/run-diff.sh")
+          [ ! -f phase3/run-cross-docker.sh ] && missing+=("phase3/run-cross-docker.sh")
+          [ ! -f phase2/build.zig ] && missing+=("phase2/build.zig")
+          if [ ${#missing[@]} -gt 0 ]; then
+            printf 'phase-3 prerequisites missing — affected jobs will be skipped:\n'
+            printf '  - %s\n' "${missing[@]}"
+          fi
+
   zcc-vs-gcc:
     name: zcc-vs-gcc differential (${{ matrix.os }})
+    needs: guard
+    if: needs.guard.outputs.has_diff == 'true' && needs.guard.outputs.has_zig == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -27,18 +52,17 @@ jobs:
         with:
           version: 0.16.0
       - name: Build zcc
-        if: hashFiles('phase2/build.zig') != ''
         working-directory: phase2
         run: zig build -Drelease-safe
       - name: Run differential tests (-O0)
-        if: hashFiles('phase3/run-diff.sh') != ''
         run: bash phase3/run-diff.sh -O0
       - name: Run differential tests (-O2)
-        if: hashFiles('phase3/run-diff.sh') != ''
         run: bash phase3/run-diff.sh -O2
 
   cross-compile-linux:
     name: zcc cross-compile (linux x86_64) under docker
+    needs: guard
+    if: needs.guard.outputs.has_cross == 'true' && needs.guard.outputs.has_zig == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,9 +71,7 @@ jobs:
         with:
           version: 0.16.0
       - name: Build zcc
-        if: hashFiles('phase2/build.zig') != ''
         working-directory: phase2
         run: zig build -Drelease-safe
       - name: Cross-compile sample to linux-x86_64 and run in docker
-        if: hashFiles('phase3/run-cross-docker.sh') != ''
         run: bash phase3/run-cross-docker.sh
