@@ -45,9 +45,9 @@ static int test_poll_remove_preserves_unrelated_cqes(void)
     init_fake_ring(&state, &sq_head, &sq_tail, &sq_mask, &sq_entries, sq_array, sqes, &cq_head, &cq_tail, &cq_mask, cqes);
     state.fds[11].used = true;
     state.fds[11].active = true;
-    cqes[0].user_data = h2_uring_poll_user_data(11);
+    cqes[0].user_data = h2_uring_poll_user_data(11, 0u);
     cqes[0].res = POLLIN;
-    cqes[1].user_data = h2_uring_cancel_user_data(5);
+    cqes[1].user_data = h2_uring_cancel_user_data(5, 0u);
     cqes[1].res = -ENOENT;
 
     /* when waiting for the POLL_REMOVE completion */
@@ -114,10 +114,10 @@ static int test_h2_io_remove_handles_full_ring_of_deferred_cqes(void)
     cqes = (struct io_uring_cqe *)cqe_storage;
     init_fake_ring(&state, &sq_head, &sq_tail, &sq_mask, &sq_entries, sq_array, sqes, &cq_head, &cq_tail, &cq_mask, cqes);
     for (pos = 0u; pos + 1u < H2_URING_ENTRIES; pos++) {
-        cqes[pos].user_data = h2_uring_poll_user_data((int)(100u + pos));
+        cqes[pos].user_data = h2_uring_poll_user_data((int)(100u + pos), 0u);
         cqes[pos].res = POLLIN;
     }
-    cqes[H2_URING_ENTRIES - 1u].user_data = h2_uring_cancel_user_data(5);
+    cqes[H2_URING_ENTRIES - 1u].user_data = h2_uring_cancel_user_data(5, 0u);
     cqes[H2_URING_ENTRIES - 1u].res = -ENOENT;
 
     /* when h2_io_remove drains to the POLL_REMOVE completion {[http2-engineer]} */
@@ -129,11 +129,90 @@ static int test_h2_io_remove_handles_full_ring_of_deferred_cqes(void)
     return 0;
 }
 
+static int test_io_uring_drops_stale_cqe_after_fd_reuse(void)
+{
+    h2_uring_state state;
+    unsigned char cqe_storage[sizeof(struct io_uring_cqe)];
+    struct io_uring_cqe *cqes;
+    struct io_uring_sqe sqes[1];
+    unsigned sq_array[1];
+    unsigned sq_head = 0u;
+    unsigned sq_tail = 0u;
+    unsigned sq_mask = 0u;
+    unsigned sq_entries = 1u;
+    unsigned cq_head = 0u;
+    unsigned cq_tail = 0u;
+    unsigned cq_mask = 0u;
+    h2_event event;
+    int out_count;
+
+    /* given a deferred readiness CQE from an older fd generation {[http2-engineer]} */
+    cqes = (struct io_uring_cqe *)cqe_storage;
+    init_fake_ring(&state, &sq_head, &sq_tail, &sq_mask, &sq_entries, sq_array, sqes, &cq_head, &cq_tail, &cq_mask, cqes);
+    state.fds[7].used = true;
+    state.fds[7].active = true;
+    state.fds[7].generation = 2u;
+    state.pending_cqes[0].user_data = h2_uring_poll_user_data(7, 1u);
+    state.pending_cqes[0].res = POLLIN;
+    state.pending_cqes[0].flags = 0u;
+    state.pending_cqe_count = 1u;
+
+    /* when saved completions are replayed after the fd has been reused {[http2-engineer]} */
+    out_count = 0;
+    h2_uring_finish_saved_cqes(&state, &event, 1u, &out_count);
+
+    /* then the stale CQE is dropped without clearing the current poll state {[http2-engineer]} */
+    EXPECT_EQ_INT(out_count, 0);
+    EXPECT_EQ_U32(state.pending_cqe_count, 0u);
+    EXPECT_TRUE(state.fds[7].active);
+    return 0;
+}
+
+static int test_io_uring_clears_active_after_poll_remove(void)
+{
+    h2_io io;
+    h2_uring_state state;
+    unsigned char cqe_storage[sizeof(struct io_uring_cqe)];
+    struct io_uring_cqe *cqes;
+    struct io_uring_sqe sqes[1];
+    unsigned sq_array[1];
+    unsigned sq_head = 0u;
+    unsigned sq_tail = 0u;
+    unsigned sq_mask = 0u;
+    unsigned sq_entries = 1u;
+    unsigned cq_head = 0u;
+    unsigned cq_tail = 1u;
+    unsigned cq_mask = 0u;
+
+    /* given an active poll with its POLL_REMOVE completion already queued {[http2-engineer]} */
+    cqes = (struct io_uring_cqe *)cqe_storage;
+    init_fake_ring(&state, &sq_head, &sq_tail, &sq_mask, &sq_entries, sq_array, sqes, &cq_head, &cq_tail, &cq_mask, cqes);
+    io.fd = -1;
+    io.state = &state;
+    state.fds[9].used = true;
+    state.fds[9].active = true;
+    state.fds[9].events = POLLIN;
+    state.fds[9].generation = 4u;
+    cqes[0].user_data = h2_uring_cancel_user_data(9, 4u);
+    cqes[0].res = -ENOENT;
+
+    /* when removing the fd drains the successful POLL_REMOVE completion {[http2-engineer]} */
+    EXPECT_EQ_INT(h2_io_remove(&io, 9), 0);
+
+    /* then active is cleared before the slot becomes unused {[http2-engineer]} */
+    EXPECT_TRUE(!state.fds[9].active);
+    EXPECT_TRUE(!state.fds[9].used);
+    EXPECT_EQ_U32(state.fds[9].events, 0u);
+    return 0;
+}
+
 int main(void)
 {
     EXPECT_EQ_INT(test_poll_remove_preserves_unrelated_cqes(), 0);
     EXPECT_EQ_INT(test_finite_timeout_fallback_submits_timeout_sqe(), 0);
     EXPECT_EQ_INT(test_h2_io_remove_handles_full_ring_of_deferred_cqes(), 0);
+    EXPECT_EQ_INT(test_io_uring_drops_stale_cqe_after_fd_reuse(), 0);
+    EXPECT_EQ_INT(test_io_uring_clears_active_after_poll_remove(), 0);
     puts("io_uring_test: ok");
     return 0;
 }

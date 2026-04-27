@@ -24,6 +24,7 @@ typedef struct h2_uring_fd_state {
     bool used;
     bool active;
     uint32_t events;
+    uint32_t generation;
 } h2_uring_fd_state;
 
 typedef struct h2_uring_saved_cqe {
@@ -68,14 +69,14 @@ static int h2_uring_enter(int fd, unsigned to_submit, unsigned min_complete, uns
     return (int)syscall(__NR_io_uring_enter, fd, to_submit, min_complete, flags, arg, arg_size);
 }
 
-static uint64_t h2_uring_poll_user_data(int fd)
+static uint64_t h2_uring_poll_user_data(int fd, uint32_t generation)
 {
-    return (uint64_t)(uint32_t)fd;
+    return ((uint64_t)generation << 32) | (uint64_t)(uint32_t)fd;
 }
 
-static uint64_t h2_uring_cancel_user_data(int fd)
+static uint64_t h2_uring_cancel_user_data(int fd, uint32_t generation)
 {
-    return H2_URING_CANCEL_FLAG | h2_uring_poll_user_data(fd);
+    return H2_URING_CANCEL_FLAG | h2_uring_poll_user_data(fd, generation);
 }
 
 static bool h2_uring_is_cancel_user_data(uint64_t user_data)
@@ -91,6 +92,11 @@ static bool h2_uring_is_timeout_user_data(uint64_t user_data)
 static int h2_uring_user_data_fd(uint64_t user_data)
 {
     return (int)(user_data & H2_URING_FD_MASK);
+}
+
+static uint32_t h2_uring_user_data_generation(uint64_t user_data)
+{
+    return (uint32_t)((user_data & UINT64_C(0x3fffffff00000000)) >> 32);
 }
 
 static void *h2_uring_offset(void *base, unsigned offset)
@@ -182,6 +188,9 @@ static int h2_uring_set_fd(h2_io *io, int fd, bool used, uint32_t events)
         return -1;
     }
     state = io->state;
+    if (used && !state->fds[fd].used) {
+        state->fds[fd].generation++;
+    }
     state->fds[fd].used = used;
     state->fds[fd].events = events;
     if (!used) {
@@ -226,6 +235,7 @@ int h2_io_remove(h2_io *io, int fd)
     if (h2_uring_cancel_active_poll(state, fd) != 0) {
         return -1;
     }
+    state->fds[fd].active = false;
     state->fds[fd].used = false;
     state->fds[fd].events = 0u;
     return 0;
@@ -253,6 +263,7 @@ static void h2_uring_finish_cqe(h2_uring_state *state, const struct io_uring_cqe
     uint64_t user_data;
     int fd;
     int result;
+    uint32_t generation;
 
     user_data = cqe->user_data;
     if (h2_uring_is_timeout_user_data(user_data)) {
@@ -263,8 +274,14 @@ static void h2_uring_finish_cqe(h2_uring_state *state, const struct io_uring_cqe
     if (fd < 0 || fd >= (int)H2_URING_MAX_FDS) {
         return;
     }
+    generation = h2_uring_user_data_generation(user_data);
     if (h2_uring_is_cancel_user_data(user_data)) {
-        state->fds[fd].active = false;
+        if (generation == state->fds[fd].generation) {
+            state->fds[fd].active = false;
+        }
+        return;
+    }
+    if (generation != state->fds[fd].generation) {
         return;
     }
     state->fds[fd].active = false;
@@ -337,7 +354,7 @@ static int h2_uring_drain_until_cancel(h2_uring_state *state, int fd)
 
             cqe = &state->cqes[head & *state->cq_ring_mask];
             user_data = cqe->user_data;
-            if (user_data == h2_uring_cancel_user_data(fd)) {
+            if (user_data == h2_uring_cancel_user_data(fd, state->fds[fd].generation)) {
                 head++;
                 *state->cq_head = head;
                 return cqe->res == -ENOENT || cqe->res >= 0 ? 0 : -1;
@@ -365,9 +382,9 @@ static int h2_uring_cancel_active_poll(h2_uring_state *state, int fd)
     }
     memset(sqe, 0, sizeof(*sqe));
     sqe->opcode = IORING_OP_POLL_REMOVE;
-    sqe->addr = h2_uring_poll_user_data(fd);
-    sqe->user_data = h2_uring_cancel_user_data(fd);
-    if (h2_uring_enter(state->ring_fd, 1u, 0u, 0u, NULL, 0u) < 0) {
+    sqe->addr = h2_uring_poll_user_data(fd, state->fds[fd].generation);
+    sqe->user_data = h2_uring_cancel_user_data(fd, state->fds[fd].generation);
+    if (state->ring_fd >= 0 && h2_uring_enter(state->ring_fd, 1u, 0u, 0u, NULL, 0u) < 0) {
         return -1;
     }
     return h2_uring_drain_until_cancel(state, fd);
@@ -393,7 +410,7 @@ static int h2_uring_submit_missing(h2_uring_state *state)
         sqe->opcode = IORING_OP_POLL_ADD;
         sqe->fd = fd;
         sqe->poll_events = (uint16_t)state->fds[fd].events;
-        sqe->user_data = h2_uring_poll_user_data(fd);
+        sqe->user_data = h2_uring_poll_user_data(fd, state->fds[fd].generation);
         state->fds[fd].active = true;
         submitted++;
     }
