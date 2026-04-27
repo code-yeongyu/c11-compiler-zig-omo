@@ -6,19 +6,25 @@ on:
     paths:
       - 'phase1/**'
       - 'scripts/run-in-docker.sh'
+      - 'scripts/test-run-in-docker.sh'
       - '.github/workflows/phase1-c.yml'
   pull_request:
     paths:
       - 'phase1/**'
       - 'scripts/run-in-docker.sh'
+      - 'scripts/test-run-in-docker.sh'
       - '.github/workflows/phase1-c.yml'
 
 # Cancel in-flight runs for the same logical branch the moment a new push lands.
 # `head_ref` is set on pull_request events (the source branch); `ref_name` on
 # push events. Falling back across the two unifies the cancel group so a fresh
 # push to a feature branch also cancels the open PR's stale run.
+#
+# The source-repo qualifier (`pull_request.head.repo.full_name || repository`)
+# scopes the group per-fork so that a same-named branch on a contributor's fork
+# cannot cancel the upstream branch's run, and vice-versa.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -62,6 +68,9 @@ jobs:
             printf 'phase-1 sub-projects not yet authored — affected jobs will be skipped:\n'
             printf '  - %s\n' "${missing[@]}"
           fi
+      - name: scripts/run-in-docker.sh smoke
+        if: hashFiles('scripts/test-run-in-docker.sh') != ''
+        run: bash scripts/test-run-in-docker.sh
 
   c11-reference-native:
     name: c11-ref / native ${{ matrix.cc }} on ${{ matrix.os }}

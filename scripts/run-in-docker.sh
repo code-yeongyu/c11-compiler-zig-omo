@@ -35,7 +35,7 @@ TARGETS=()
 MAKE_VARS=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --)         shift ;;
+    --)         : ;;
     IMAGE=*)    IMAGE="${1#IMAGE=}" ;;
     *=*)        MAKE_VARS+=("$1") ;;
     *)          TARGETS+=("$1") ;;
@@ -54,13 +54,20 @@ fi
 
 echo "==> image=${IMAGE}  subproject=phase1/${SUB}  vars=[${MAKE_VARS[*]:-}]  targets=[${TARGETS[*]}]"
 
+# Build a shell-safe command line so whitespace in make variables (e.g.
+# CFLAGS='-O2 -g -fsanitize=address') survives the trip through docker.
+cmd="set -euxo pipefail; exec make"
+if [ "${#MAKE_VARS[@]}" -gt 0 ]; then
+  for v in "${MAKE_VARS[@]}"; do
+    cmd+=" $(printf '%q' "$v")"
+  done
+fi
+for t in "${TARGETS[@]}"; do
+  cmd+=" $(printf '%q' "$t")"
+done
+
 docker run --rm \
   -v "${ROOT}:/work" \
   -w "/work/phase1/${SUB}" \
   "${IMAGE}" \
-  bash -c "
-    set -euxo pipefail
-    for t in ${TARGETS[*]}; do
-      make ${MAKE_VARS[*]:-} \"\$t\"
-    done
-  "
+  bash -c "$cmd"

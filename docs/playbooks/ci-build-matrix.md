@@ -56,12 +56,15 @@ Why doom smoke is **not** in the docker matrix — bare `gcc:13/14` images don't
 
 ### macOS host, against gcc:14 in OrbStack
 
+The bare invocation runs the canonical default target sequence baked into [`scripts/run-in-docker.sh`](../../scripts/run-in-docker.sh) (`print-platform`, then `all`, then `test`); explicit targets after the subproject name override that default. `IMAGE=gcc:<tag>` selects the image and may appear anywhere in the argv (the optional `--` separator is purely cosmetic and never swallows the next argument). Make variables containing whitespace (such as `CFLAGS='-O2 -g -fsanitize=address'`) reach the container as a single argv element — they are not reparsed by an inner shell.
+
 ```bash
 orb start
-scripts/run-in-docker.sh c11-ref            # default targets: print-platform + all + test
+scripts/run-in-docker.sh c11-ref                                # default: print-platform + all + test
 scripts/run-in-docker.sh http2 all test smoke IO=epoll
-scripts/run-in-docker.sh doom  all test                  # no smoke in docker (Xvfb-less image)
-scripts/run-in-docker.sh c11-ref all test -- IMAGE=gcc:13   # alt image
+scripts/run-in-docker.sh doom  all test                         # no smoke in docker (Xvfb-less image)
+scripts/run-in-docker.sh c11-ref all test -- IMAGE=gcc:13       # alt image; -- is cosmetic
+scripts/run-in-docker.sh http2 all CFLAGS='-O2 -g -fsanitize=address'  # whitespace-safe
 ```
 
 ### macOS host, native (matches `*-native` jobs)
@@ -121,7 +124,7 @@ clean:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `make: *** No rule to make target 'all'` in CI | Subproject Makefile not authored yet | The job emits a `::notice::` and exits 0 — that's expected during phase ramp-up. Once the Makefile lands, the gate flips. |
+| Subproject job shows `Skipped` (gray, neither red nor green) | `phase1/<sub>/Makefile` not authored yet | The `phase-1 guard` job sets `has_<sub>` outputs from Makefile presence; subproject jobs gate on `if: needs.guard.outputs.has_<sub> == 'true'` and are skipped when false. `make all` is never invoked in this state, so a missing-rule error never surfaces. Add `phase1/<sub>/Makefile` (and the matching path filter / output) to flip the gate. See `.github/workflows/phase1-c.yml` lines 29-64 for the guard logic and lines 66-167 for the per-subproject jobs. |
 | `make: *** No rule to make target 'print-platform'` | Subproject Makefile didn't include `../Makefile.common` | Add `include ../Makefile.common` at the top. **`make print-platform` is the canonical sentinel** — if it doesn't print `PLATFORM=… ARCH=… CC=… CFLAGS=…`, the include line is missing or broken. |
 | Build artefacts showing up as untracked in PRs | `OBJDIR` not under `phase1/<sub>/build/` | Either move builds into `build/`, or extend the root `.gitignore` (and document why in the PR). |
 | `liburing-dev not found` in docker | Tried to set `IO=io_uring` in the docker matrix | Don't — io_uring is exercised in the native ubuntu-latest cell; the docker matrix pins http2 to `IO=epoll`. |

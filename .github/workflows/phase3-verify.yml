@@ -12,6 +12,10 @@ on:
       - 'phase2/**'
       - '.github/workflows/phase3-verify.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   guard:
     name: phase-3 guard
