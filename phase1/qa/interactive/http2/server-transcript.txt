@@ -1,0 +1,6 @@
+rm -rf build
+mkdir -p build
+cc -std=c11 -Wall -Wextra -Wshadow -Wstrict-prototypes -Wpedantic -fno-common -O2 -g -D_DARWIN_C_SOURCE -Iinclude -DHTTP2_BACKEND_KQUEUE src/frame.c src/hpack_static.c src/hpack.c src/stream.c src/connection.c src/server.c src/main.c src/io_kqueue.c -o build/h2d   
+h2d stack limit: 8372224 bytes
+h2d listening on 127.0.0.1:8000 using kqueue
+bash: line 8: 69016 Terminated: 15          ./build/h2d --host 127.0.0.1 --port 8000 --ready-file ../qa/interactive/http2/ready.txt
