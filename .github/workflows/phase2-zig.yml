@@ -46,10 +46,26 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Zig
-        uses: mlugg/setup-zig@v1
-        with:
-          version: 0.16.0
+      - name: Install Zig 0.16.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OS}" in
+            Linux) zig_os="linux" ;;
+            macOS) zig_os="macos" ;;
+            *) echo "unsupported runner OS: ${RUNNER_OS}" >&2; exit 1 ;;
+          esac
+          case "$(uname -m)" in
+            x86_64|amd64) zig_arch="x86_64" ;;
+            aarch64|arm64) zig_arch="aarch64" ;;
+            *) echo "unsupported runner arch: $(uname -m)" >&2; exit 1 ;;
+          esac
+          zig_dir="zig-${zig_arch}-${zig_os}-0.16.0"
+          curl -fsSL "https://ziglang.org/download/0.16.0/${zig_dir}.tar.xz" -o /tmp/zig.tar.xz
+          mkdir -p "${RUNNER_TEMP}/zig"
+          tar -xJf /tmp/zig.tar.xz -C "${RUNNER_TEMP}/zig" --strip-components=1
+          echo "${RUNNER_TEMP}/zig" >> "$GITHUB_PATH"
+          "${RUNNER_TEMP}/zig/zig" version
       - name: zig fmt --check
         working-directory: phase2/zcc
         run: zig build fmt
