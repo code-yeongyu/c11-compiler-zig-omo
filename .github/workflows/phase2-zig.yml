@@ -90,4 +90,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: zcc in gcc:14 container
-        run: IMAGE=gcc:14 bash scripts/run-in-docker.sh phase2 zcc clean test smoke
+        run: IMAGE=gcc:14 bash scripts/run-in-docker-phase2.sh zcc clean test smoke
