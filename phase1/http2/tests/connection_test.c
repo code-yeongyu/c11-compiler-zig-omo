@@ -363,6 +363,35 @@ static int test_connection_treats_rst_stream_on_idle_as_protocol_error(void)
     return 0;
 }
 
+static int test_connection_rejects_rst_stream_on_even_idle_stream(void)
+{
+    h2_connection conn;
+    uint8_t wire[256];
+    size_t wire_len;
+    size_t pos;
+
+    /* given a server connection that never opened pushed stream 2 {[http2-engineer]} */
+    h2_connection_init(&conn);
+    wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
+    h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
+
+    /* when RST_STREAM arrives for that even-numbered idle stream {[http2-engineer]} */
+    wire_len = h2_frame_encode_rst_stream(wire, sizeof(wire), 2u, H2_CANCEL);
+    EXPECT_TRUE(wire_len > 0u);
+    EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_PROTOCOL_ERROR);
+
+    /* then the connection fails with GOAWAY and no stream slot is created {[http2-engineer]} */
+    for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
+        EXPECT_TRUE(conn.streams[pos].id != 2u);
+    }
+    EXPECT_EQ_U32(conn.goaway_error, H2_PROTOCOL_ERROR);
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_GOAWAY), 1);
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 0);
+    return 0;
+}
+
 static int test_connection_rejects_data_on_idle_stream_as_connection_error(void)
 {
     h2_connection conn;
@@ -489,6 +518,7 @@ int main(void)
     EXPECT_EQ_INT(test_connection_defers_blocked_response_data_until_window_update(), 0);
     EXPECT_EQ_INT(test_connection_rejects_non_monotonic_stream_id(), 0);
     EXPECT_EQ_INT(test_connection_treats_rst_stream_on_idle_as_protocol_error(), 0);
+    EXPECT_EQ_INT(test_connection_rejects_rst_stream_on_even_idle_stream(), 0);
     EXPECT_EQ_INT(test_connection_rejects_data_on_idle_stream_as_connection_error(), 0);
     EXPECT_EQ_INT(test_connection_rejects_data_on_closed_stream_without_window_leak(), 0);
     EXPECT_EQ_INT(test_connection_refuses_oversized_path_as_stream_error(), 0);
