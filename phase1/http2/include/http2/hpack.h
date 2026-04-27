@@ -6,9 +6,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define H2_HEADER_NAME_CAP 64u
+#define H2_HEADER_VALUE_CAP 256u
+
 typedef struct h2_header_field {
-    char name[64];
-    char value[256];
+    char name[H2_HEADER_NAME_CAP];
+    char value[H2_HEADER_VALUE_CAP];
 } h2_header_field;
 
 int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix_bits, uint32_t *value, size_t *used);

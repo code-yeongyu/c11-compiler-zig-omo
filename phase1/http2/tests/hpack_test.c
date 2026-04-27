@@ -44,6 +44,47 @@ static int test_hpack_integer(void)
     return 0;
 }
 
+static int test_hpack_integer_rejects_overlong_uint32_shift(void)
+{
+    const uint8_t wire[] = { 0xffu, 0x80u, 0x80u, 0x80u, 0x80u, 0x80u, 0x00u };
+    uint32_t value;
+    size_t used;
+
+    /* given an HPACK integer continuation that would require a shift past uint32_t */
+    /* when decoding it into the uint32_t API */
+    /* then it is rejected before any oversized shift occurs */
+    EXPECT_EQ_INT(h2_hpack_decode_integer(wire, sizeof(wire), 7u, &value, &used), H2_COMPRESSION_ERROR);
+    return 0;
+}
+
+static int test_hpack_refuses_oversized_literal_field(void)
+{
+    uint8_t block[H2_HEADER_VALUE_CAP + 32u];
+    h2_header_field fields[1];
+    size_t field_len;
+    size_t block_len;
+    size_t pos;
+    size_t index_len;
+    size_t value_len;
+    char value[H2_HEADER_VALUE_CAP + 1u];
+
+    /* given a literal header whose value exceeds the documented fixed field cap */
+    memset(value, 'a', sizeof(value) - 1u);
+    value[sizeof(value) - 1u] = '\0';
+    pos = 0u;
+    index_len = h2_hpack_encode_integer(block + pos, sizeof(block) - pos, 4u, 0x00u, 58u);
+    EXPECT_TRUE(index_len > 0u);
+    pos += index_len;
+    value_len = h2_hpack_encode_string(block + pos, sizeof(block) - pos, value);
+    EXPECT_TRUE(value_len > 0u);
+    block_len = pos + value_len;
+
+    /* when decoding the header list */
+    /* then the stream is refused instead of treating the size limit as HPACK corruption */
+    EXPECT_EQ_INT(h2_hpack_decode_headers(block, block_len, fields, 1u, &field_len), H2_REFUSED_STREAM);
+    return 0;
+}
+
 static int test_hpack_decode_request_path(void)
 {
     uint8_t block[64];
@@ -96,8 +137,10 @@ int main(void)
 {
     EXPECT_EQ_INT(test_static_table(), 0);
     EXPECT_EQ_INT(test_hpack_integer(), 0);
+    EXPECT_EQ_INT(test_hpack_integer_rejects_overlong_uint32_shift(), 0);
     EXPECT_EQ_INT(test_hpack_decode_request_path(), 0);
     EXPECT_EQ_INT(test_hpack_decode_literal(), 0);
+    EXPECT_EQ_INT(test_hpack_refuses_oversized_literal_field(), 0);
     puts("hpack_test: ok");
     return 0;
 }

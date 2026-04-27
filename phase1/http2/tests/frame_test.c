@@ -116,6 +116,39 @@ static int test_priority_frame(void)
     return 0;
 }
 
+static int test_priority_rejects_self_dependency(void)
+{
+    uint8_t payload[5] = { 0x00u, 0x00u, 0x00u, 0x05u, 0x10u };
+    h2_frame_header header;
+    h2_priority_payload parsed;
+
+    /* given a PRIORITY frame whose stream depends on itself */
+    header.length = 5u;
+    header.type = H2_FRAME_PRIORITY;
+    header.flags = 0u;
+    header.stream_id = 5u;
+
+    /* when parsing the priority payload */
+    /* then the self-dependency is rejected as a protocol error */
+    EXPECT_EQ_INT(h2_frame_parse_priority(&header, payload, &parsed), H2_PROTOCOL_ERROR);
+    return 0;
+}
+
+static int test_encoder_rejects_unserialized_padding_and_priority_flags(void)
+{
+    const uint8_t data[] = { 'x' };
+    uint8_t wire[64];
+
+    /* given encoder calls with flags whose payload fields are not serialized yet */
+    /* when asking the encoder to write PADDED DATA or PADDED/PRIORITY HEADERS */
+    /* then it refuses to produce malformed wire bytes */
+    EXPECT_EQ_SIZE(h2_frame_encode_data(wire, sizeof(wire), 1u, H2_FLAG_PADDED, data, sizeof(data)), 0u);
+    EXPECT_EQ_SIZE(h2_frame_encode_headers(wire, sizeof(wire), 1u, H2_FLAG_PADDED, data, sizeof(data)), 0u);
+    EXPECT_EQ_SIZE(h2_frame_encode_headers(wire, sizeof(wire), 1u, H2_FLAG_PRIORITY, data, sizeof(data)), 0u);
+    EXPECT_EQ_SIZE(h2_frame_encode_push_promise(wire, sizeof(wire), 1u, H2_FLAG_PADDED, 2u, data, sizeof(data)), 0u);
+    return 0;
+}
+
 static int test_rst_stream_frame(void)
 {
     uint8_t wire[64];
@@ -329,6 +362,8 @@ int main(void)
     EXPECT_EQ_INT(test_data_frame(), 0);
     EXPECT_EQ_INT(test_headers_frame(), 0);
     EXPECT_EQ_INT(test_priority_frame(), 0);
+    EXPECT_EQ_INT(test_priority_rejects_self_dependency(), 0);
+    EXPECT_EQ_INT(test_encoder_rejects_unserialized_padding_and_priority_flags(), 0);
     EXPECT_EQ_INT(test_rst_stream_frame(), 0);
     EXPECT_EQ_INT(test_settings_frame(), 0);
     EXPECT_EQ_INT(test_push_promise_frame(), 0);
