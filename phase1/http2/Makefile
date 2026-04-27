@@ -39,7 +39,11 @@ ifeq ($(PLATFORM),linux)
   DEPS += $(BUILD_DIR)/io_uring_test.d
 endif
 
-.PHONY: all test e2e cli cflags-smoke makefile-test smoke clean print-backend
+ifneq ($(filter clean,$(MAKECMDGOALS)),)
+.NOTPARALLEL:
+endif
+
+.PHONY: all test e2e cli cflags-smoke makefile-test smoke asan clean print-backend
 
 all: $(BUILD_DIR)/h2d
 
@@ -69,6 +73,7 @@ $(BUILD_DIR)/io_uring_test: tests/io_uring_test.c src/io_uring.c | $(BUILD_DIR)
 
 makefile-test:
 	@case "$$($(MAKE) -n cflags-smoke)" in *"-std=$(CSTD)"*"-fsanitize=address"*) ;; *) echo "cflags-smoke must compose base CFLAGS with ASan"; exit 1;; esac
+	bash tests/test-clean-serialize.sh
 
 test: $(BUILD_DIR)/frame_test $(BUILD_DIR)/hpack_test $(BUILD_DIR)/stream_test $(BUILD_DIR)/connection_test $(BUILD_DIR)/e2e_test $(LINUX_TESTS) makefile-test
 	$(BUILD_DIR)/frame_test
@@ -89,6 +94,10 @@ cflags-smoke:
 
 smoke: $(BUILD_DIR)/h2d
 	bash tests/smoke.sh
+
+asan:
+	$(MAKE) clean
+	$(MAKE) CFLAGS='$(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS) -fsanitize=address' LDFLAGS='$(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS) -fsanitize=address' all test e2e cli smoke
 
 print-backend:
 	@echo "PLATFORM=$(PLATFORM) IO=$(IO) BACKEND_SRC=$(BACKEND_SRC) BACKEND_CFLAGS=$(BACKEND_CFLAGS)"
