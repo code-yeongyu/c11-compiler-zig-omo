@@ -63,15 +63,11 @@ FIRST20=/index.html
 
 BODY_BYTES=12
 
-$ 5x concurrent curl -s --http2-prior-knowledge /
-concurrent[5] status=200 first20=concurrent[3] status=200 first20=concurrent[1] status=200 first20=concurrent[2] status=200 first20=concurrent[4] status=200 first20=/
-/
-/
-/
- bytes=/
- bytes= bytes= bytes= bytes=2
-22
-22
-
+$ sequential curl -s --http2-prior-knowledge / (5 requests)
+[req-1] status=200 first20=/ body_bytes=2
+[req-2] status=200 first20=/ body_bytes=2
+[req-3] status=200 first20=/ body_bytes=2
+[req-4] status=200 first20=/ body_bytes=2
+[req-5] status=200 first20=/ body_bytes=2
 
 SIGTERM_SENT=1

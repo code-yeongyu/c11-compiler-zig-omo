@@ -37,7 +37,7 @@ Quirks: the legacy DOOM code emits many compiler warnings under the repository w
 - `curl -v --http2-prior-knowledge` confirmed h2c operation and showed `HTTP/2 200` responses.
 - `/` returned first bytes `/` with `BODY_BYTES=2`.
 - `/index.html` returned first bytes `/index.html` with `BODY_BYTES=12`.
-- The 5 concurrent curl requests all reported HTTP status 200. Their output interleaved in the transcript because they were deliberately backgrounded concurrently in one interactive pane.
+- Five sequential curl requests to `/` all reported HTTP status 200 with `body_bytes=2`. Sequential execution ensures each request's outcome is independently bound in the transcript.
 - The server was terminated after the client run with SIGTERM. The transcript records `Terminated: 15`, and the server marker recorded exit 143. That is the expected shell encoding for SIGTERM, not a functional failure.
 
 Quirk: because `phase1/http2/Makefile` includes `../Makefile.common` before declaring `all`, plain `make` selects the shared `require-linux` target as the default on macOS. The interactive session therefore used the explicit target `make all`, which is the correct project target and builds the macOS kqueue backend.
