@@ -10,13 +10,13 @@ endif
 ifeq ($(filter command line environment,$(origin CFLAGS)),)
 CFLAGS ?= $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
 else
-override CFLAGS := $(CFLAGS) $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+override CFLAGS := $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS) $(CFLAGS)
 endif
 
 ifeq ($(filter command line environment,$(origin LDFLAGS)),)
 LDFLAGS ?= $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
 else
-override LDFLAGS := $(LDFLAGS) $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+override LDFLAGS := $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS) $(LDFLAGS)
 endif
 
 PROGRAMS := \
