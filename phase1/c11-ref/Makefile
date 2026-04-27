@@ -42,7 +42,7 @@ BUILD_DIR := .build
 TEST_CC ?= $(CC)
 LDLIBS ?= -lm
 
-.PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang
+.PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression
 
 all: check-gcc negative check-clang $(TESTS)
 
@@ -55,7 +55,7 @@ check-clang:
 		printf 'clang not found; skipping clang syntax build\n'; \
 	fi
 
-negative: check-negative-gcc
+negative: check-negative-gcc check-negative-filename-regression
 
 check-negative-gcc:
 	@mkdir -p $(BUILD_DIR)/negative
@@ -63,13 +63,14 @@ check-negative-gcc:
 		name=$$(basename $$src .c); \
 		keyword='error'; \
 		if [ "$$name" = atomic_array ]; then keyword='atomic|_Atomic|array'; fi; \
+		if [ "$$name" = atomic_filename_regression ]; then keyword='expected|expression'; fi; \
 		if [ "$$name" = alignas_bitfield ]; then keyword='align|Alignas|bit-field|field'; fi; \
 		if [ "$$name" = vla_in_struct ]; then keyword='variable|variably|VLA|field|member'; fi; \
-		if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/$$name.gcc.o 2>$(BUILD_DIR)/negative/$$name.gcc.err; then \
+		if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/$$name.gcc.o < $$src 2>$(BUILD_DIR)/negative/$$name.gcc.err; then \
 			printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 			exit 1; \
 		fi; \
-		grep -E "$$keyword" $(BUILD_DIR)/negative/$$name.gcc.err >/dev/null || { \
+		grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/$$name.gcc.err | grep -E "$$keyword" >/dev/null || { \
 			printf '%s gcc diagnostic missed expected constraint keyword\n' $$src >&2; \
 			exit 1; \
 		}; \
@@ -82,18 +83,55 @@ check-negative-clang:
 		name=$$(basename $$src .c); \
 		keyword='error'; \
 		if [ "$$name" = atomic_array ]; then keyword='atomic|_Atomic|array'; fi; \
+		if [ "$$name" = atomic_filename_regression ]; then keyword='expected|expression'; fi; \
 		if [ "$$name" = alignas_bitfield ]; then keyword='align|Alignas|bit-field|field'; fi; \
 		if [ "$$name" = vla_in_struct ]; then keyword='variable|variably|VLA|field|member'; fi; \
-		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/$$name.clang.o 2>$(BUILD_DIR)/negative/$$name.clang.err; then \
+		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/$$name.clang.o < $$src 2>$(BUILD_DIR)/negative/$$name.clang.err; then \
 			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
 			exit 1; \
 		fi; \
-		grep -E "$$keyword" $(BUILD_DIR)/negative/$$name.clang.err >/dev/null || { \
+		grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/$$name.clang.err | grep -E "$$keyword" >/dev/null || { \
 			printf '%s clang diagnostic missed expected constraint keyword\n' $$src >&2; \
 			exit 1; \
 		}; \
 		printf 'OK negative clang: %s rejected as expected\n' $$src; \
 	done
+
+check-negative-filename-regression:
+	@mkdir -p $(BUILD_DIR)/negative
+	@src=negative/atomic_filename_regression.c; \
+	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.err; then \
+		printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
+		exit 1; \
+	fi; \
+	grep -E 'atomic|_Atomic|array' $(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.err >/dev/null || { \
+		printf '%s gcc path diagnostic no longer demonstrates filename keyword pollution\n' $$src >&2; \
+		exit 1; \
+	}; \
+	if grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/atomic_filename_regression.gcc.err | grep -E 'atomic|_Atomic|array' >/dev/null; then \
+		printf '%s gcc diagnostic matched keyword only from source content, expected no atomic keyword\n' $$src >&2; \
+		exit 1; \
+	fi; \
+	printf 'OK negative gcc: filename keyword regression rejected as expected\n'; \
+	if command -v $(CLANG) >/dev/null 2>&1; then \
+		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.clang.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.clang.err; then \
+			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
+			exit 1; \
+		fi; \
+		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.clang.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.clang.err; then \
+			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
+			exit 1; \
+		fi; \
+		grep -E 'atomic|_Atomic|array' $(BUILD_DIR)/negative/atomic_filename_regression.path.clang.err >/dev/null || { \
+			printf '%s clang path diagnostic no longer demonstrates filename keyword pollution\n' $$src >&2; \
+			exit 1; \
+		}; \
+		if grep -E '(^| )error:|warning:' $(BUILD_DIR)/negative/atomic_filename_regression.clang.err | grep -E 'atomic|_Atomic|array' >/dev/null; then \
+			printf '%s clang diagnostic matched keyword only from source content, expected no atomic keyword\n' $$src >&2; \
+			exit 1; \
+		fi; \
+		printf 'OK negative clang: filename keyword regression rejected as expected\n'; \
+	fi
 
 $(BUILD_DIR)/gcc/%.c.o: %.c
 	@mkdir -p $(dir $@)
