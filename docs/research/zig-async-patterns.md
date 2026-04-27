@@ -56,15 +56,13 @@ fn readSourceFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 fn compileAll(gpa: std.mem.Allocator, io: std.Io, tus: []const TranslationUnit) !void {
     // given a list of translation units
     // when we create a group and spawn one concurrent task per TU
-    var group = std.Io.Group.init(gpa);
-    defer group.deinit();
+    var group: std.Io.Group = .init;
     for (tus) |tu| {
-        const future = try io.concurrent(compileTu, .{ gpa, io, tu });
-        group.add(future);
+        try group.concurrent(io, compileTu, .{ gpa, io, tu });
     }
 
     // then we wait for all tasks to complete
-    try group.awaitAll(io);
+    try group.await(io);
 }
 ```
 
@@ -72,40 +70,35 @@ fn compileAll(gpa: std.mem.Allocator, io: std.Io, tus: []const TranslationUnit) 
 
 | Method | Behavior |
 |---|---|
-| `io.concurrent(func, args)` | Require concurrency; returns `!std.Io.Future(T)`. Fails if backend cannot oversubscribe. |
-| `group.add(future)` | Add a future to the group for batch awaiting. |
-| `group.awaitAll(io)` | Block until every future in the group resolves. |
+| `group.concurrent(io, func, args)` | Add a concurrent task to the group. Fails with `error.ConcurrencyUnavailable` if backend cannot oversubscribe. |
+| `group.await(io)` | Block until every task in the group resolves. |
 | `io.async(func, args)` | Decouple call from return; may or may not run concurrently. |
 
-**Implication for `zcc`:** Use `io.concurrent` for per-TU compilation. Each TU gets its own `ArenaAllocator`. The main thread calls `group.awaitAll(io)` and then proceeds to the link step.
+**Implication for `zcc`:** Use `group.concurrent` for per-TU compilation. Each TU gets its own `ArenaAllocator`. The main thread calls `group.await(io)` and then proceeds to the link step.
 
 ## 3. Groups (`std.Io.Group`)
 
-`std.Io.Group` synchronizes batches of futures. It replaces the old `std.Thread.WaitGroup` pattern in 0.16.
+`std.Io.Group` is the canonical wait-group API in Zig 0.16. It synchronizes batches of concurrent tasks.
 
 ### Pattern: phased pipeline
 
 ```zig
 fn pipeline(gpa: std.mem.Allocator, io: std.Io, tus: []const TranslationUnit) !void {
     // given translation units
-    var lex_group = std.Io.Group.init(gpa);
-    defer lex_group.deinit();
-    var parse_group = std.Io.Group.init(gpa);
-    defer parse_group.deinit();
+    var lex_group: std.Io.Group = .init;
+    var parse_group: std.Io.Group = .init;
 
     // when we lex all TUs in parallel
     for (tus) |tu| {
-        const future = try io.concurrent(lexTu, .{ gpa, tu });
-        lex_group.add(future);
+        try lex_group.concurrent(io, lexTu, .{ gpa, tu });
     }
-    try lex_group.awaitAll(io);
+    try lex_group.await(io);
 
     // then we parse all TUs in parallel
     for (tus) |tu| {
-        const future = try io.concurrent(parseTu, .{ gpa, tu });
-        parse_group.add(future);
+        try parse_group.concurrent(io, parseTu, .{ gpa, tu });
     }
-    try parse_group.awaitAll(io);
+    try parse_group.await(io);
 }
 ```
 
@@ -233,18 +226,16 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     // when we initialize the I/O backend
-    var threaded = try std.Io.Threaded.init(allocator, .{});
+    var threaded = std.Io.Threaded.init(allocator, .{});
     defer threaded.deinit();
     const io = threaded.io();
 
     // compile each TU in parallel
-    var group = std.Io.Group.init(allocator);
-    defer group.deinit();
+    var group: std.Io.Group = .init;
     for (args[1..]) |tu_path| {
-        const future = try io.concurrent(compileTuPipeline, .{ allocator, io, tu_path });
-        group.add(future);
+        try group.concurrent(io, compileTuPipeline, .{ allocator, io, tu_path });
     }
-    try group.awaitAll(io);
+    try group.await(io);
 
     // then link all object files
     try linkObjects(allocator, io, &obj_files);
