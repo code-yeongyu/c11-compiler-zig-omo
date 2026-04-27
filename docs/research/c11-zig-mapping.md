@@ -40,7 +40,7 @@ This document maps C11 language features to their Zig 0.16 equivalents. It serve
 | `struct S { ... }` | `const S = struct { ... }` | Zig structs are namespaced. Use `extern struct` for C ABI compatibility. |
 | `union U { ... }` | `const U = union { ... }` | Use `extern union` for C ABI. For tagged unions, use `union(enum) { ... }`. |
 | `enum E { A, B }` | `const E = enum(c_int) { A, B }` | C enum compatible integer type is implementation/ABI/enumerator dependent. `enum(c_int)` is acceptable for common ABI interop but NOT a complete C11 sema rule. |
-| `typedef` | `const` alias | Zig prefers `const MyInt = i32;` over `typedef`. `usingnamespace` was removed in Zig 0.16; use explicit imports. |
+| `typedef` | `const` alias | Zig prefers `const MyInt = i32;` over `typedef`. |
 | `T (*f)(U, V)` | `*const fn (U, V) T` | Function pointer. Note Zig fn pointers are non-null; use `?*const fn(...)` for nullable. |
 
 ### Type qualifiers and attributes
@@ -52,7 +52,7 @@ This document maps C11 language features to their Zig 0.16 equivalents. It serve
 | `restrict` | `noalias` | Zig `noalias` on pointer parameters. |
 | `_Alignas(N)` | `align(N)` | Zig `align(N)` on types and variables. |
 | `_Alignof(T)` | `@alignOf(T)` | Direct match. |
-| `_Static_assert(E, msg)` | `comptime assert` | Use `comptime { assert(E); }` for compile-time assertions. `@compileLog` does not halt compilation and is not a substitute. |
+| `_Static_assert(E, msg)` | `comptime { assert(E); }` | Use `std.debug.assert` inside `comptime` blocks for compile-time assertions. |
 
 ## 2. Memory and storage
 
