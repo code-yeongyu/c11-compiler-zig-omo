@@ -294,4 +294,4 @@ Before opening a Makefile-touching PR, verify:
 - [ ] No target that consumes a file (`< $(file)` or `cat $(file)`) without the file being a prerequisite or being created earlier in the same recipe.
 - [ ] No two recipes write to the same artifact filename via different code paths (parallel-make race safety).
 - [ ] CFLAGS/LDFLAGS use the $(origin) guard pattern with override := (assignment form), not bare override +=
-- [ ] Test: `make CFLAGS=-O0 print-cflags` shows `-O0` AND base flags; `make CFLAGS=-O0 CFLAGS_BASE=foo print-cflags` shows both.
+- [ ] Test: `make CFLAGS=-O0 all` (or any build target) preserves `-O0` AND prepends base flags; `make CFLAGS=-O0 CFLAGS_BASE=foo all` shows both.
