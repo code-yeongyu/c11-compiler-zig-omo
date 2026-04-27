@@ -79,6 +79,57 @@ endif
 
 `$(origin CFLAGS)` returns the source of the variable: `command line`, `environment`, `file`, `default`, `automatic`, `override`, etc. The `$(filter command line environment,...)` test detects whether the user explicitly passed `CFLAGS`. If NOT, we use the safe `?=` (assign-if-undefined) form so we don't clobber a sub-make. If YES, we use `override CFLAGS := ...` (assignment, not append). The single `:=` evaluation captures the user's flags AND prepends our base flags exactly once — even under recursive sub-makes the same evaluation runs once because `:=` is right-hand evaluated at parse time.
 
+#### Flag-order caveat: compiler last-flag-wins
+
+gcc and clang use *last-flag-wins* for conflicting CLI options. If `CFLAGS_BASE` contains `-O2` and the user runs `make CFLAGS=-O0`, the resulting command line is `gcc -O0 ... -O2 ...`. The user's `-O0` is preserved **textually** but `-O2` wins **semantically** because the compiler sees `-O2` last.
+
+This matters for:
+- Optimization level (`-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Og`)
+- Warning sets (`-Wfoo` vs `-Wno-foo`)
+- Macro defines (`-DBAR=1` vs `-DBAR=2`)
+- Include search order (`-I`)
+
+Three valid resolutions exist. Choose the one that matches your project's policy:
+
+**Option A — Base flags win (authoritative build)**
+
+Accept that base flags win on conflict. This means a user's `-O0` won't take effect if base has `-O2`. Use this when build correctness depends on base flags being authoritative (e.g. `-Werror` must not be overridden):
+
+```make
+ifeq ($(filter command line environment,$(origin CFLAGS)),)
+CFLAGS ?= $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+else
+override CFLAGS := $(CFLAGS) $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+endif
+```
+
+**Option B — User flags win (true override, development/debugging)**
+
+Reorder so user flags come last. Use this when developers must be able to override base optimization or warning settings:
+
+```make
+ifeq ($(filter command line environment,$(origin CFLAGS)),)
+CFLAGS ?= $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+else
+override CFLAGS := $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS) $(CFLAGS)
+endif
+```
+
+**Option C — Split required vs default (advanced)**
+
+Move defaults like `-O2` out of `CFLAGS_BASE` into a separate `DEFAULT_OPTIMIZE`. Use base flags + default only when the user didn't override; when the user overrode, use base flags + user flags (no default optimize):
+
+```make
+DEFAULT_OPTIMIZE ?= -O2 -g
+CFLAGS_BASE := -std=c11 -pedantic -Wall -Wextra -Werror
+
+ifeq ($(filter command line environment,$(origin CFLAGS)),)
+CFLAGS ?= $(CFLAGS_BASE) $(DEFAULT_OPTIMIZE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+else
+override CFLAGS := $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS) $(CFLAGS)
+endif
+```
+
 #### `+=` vs `:=` semantics
 
 Under recursive expansion `=` and `+=` re-evaluate every time `$(CFLAGS)` is referenced, while `:=` evaluates exactly once at parse time. Combined with the `$(origin)` guard, the `:=` form is idempotent across `$(MAKE)` recursion.
@@ -295,3 +346,4 @@ Before opening a Makefile-touching PR, verify:
 - [ ] No two recipes write to the same artifact filename via different code paths (parallel-make race safety).
 - [ ] CFLAGS/LDFLAGS use the $(origin) guard pattern with override := (assignment form), not bare override +=
 - [ ] Test: `make CFLAGS=-O0 all` (or any build target) preserves `-O0` AND prepends base flags; `make CFLAGS=-O0 CFLAGS_BASE=foo all` shows both.
+- [ ] Flag-order caveat is documented OR the chosen pattern guarantees user override semantics for conflicting flags (e.g. `-O0` vs `-O2`).
