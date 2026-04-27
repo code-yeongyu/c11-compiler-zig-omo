@@ -341,7 +341,7 @@ static int test_connection_treats_rst_stream_on_idle_as_protocol_error(void)
     size_t wire_len;
     size_t pos;
 
-    /* given a connection with no opened stream 99 {[http2-engineer]} */
+    /* given a connection with no opened stream 5 {[http2-engineer]} */
     h2_connection_init(&conn);
     wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
     EXPECT_TRUE(wire_len > 0u);
@@ -349,15 +349,17 @@ static int test_connection_treats_rst_stream_on_idle_as_protocol_error(void)
     h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
 
     /* when RST_STREAM arrives for that unopened stream {[http2-engineer]} */
-    wire_len = h2_frame_encode_rst_stream(wire, sizeof(wire), 99u, H2_CANCEL);
+    wire_len = h2_frame_encode_rst_stream(wire, sizeof(wire), 5u, H2_CANCEL);
     EXPECT_TRUE(wire_len > 0u);
     EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_PROTOCOL_ERROR);
 
     /* then no ghost stream slot is synthesized and the connection is failed {[http2-engineer]} */
     for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
-        EXPECT_TRUE(conn.streams[pos].id != 99u);
+        EXPECT_TRUE(conn.streams[pos].id != 5u);
     }
+    EXPECT_EQ_U32(conn.goaway_error, H2_PROTOCOL_ERROR);
     EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_GOAWAY), 1);
+    EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 0);
     return 0;
 }
 

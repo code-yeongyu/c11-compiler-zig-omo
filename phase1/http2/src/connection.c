@@ -114,6 +114,11 @@ static h2_stream *h2_connection_find_stream(h2_connection *conn, uint32_t stream
     return NULL;
 }
 
+static bool h2_connection_is_idle_client_stream(const h2_connection *conn, uint32_t stream_id)
+{
+    return stream_id != 0u && (stream_id & 1u) != 0u && stream_id > conn->last_stream_id;
+}
+
 static h2_stream *h2_connection_get_stream(h2_connection *conn, uint32_t stream_id)
 {
     h2_stream *stream;
@@ -511,8 +516,10 @@ static int h2_connection_process_frame(h2_connection *conn, const h2_frame_heade
         stream = h2_connection_find_stream(conn, header->stream_id);
         if (stream != NULL) {
             h2_stream_close(stream);
-        } else {
+        } else if (h2_connection_is_idle_client_stream(conn, header->stream_id)) {
             return H2_PROTOCOL_ERROR;
+        } else {
+            return H2_OK;
         }
         (void)error_code;
         return H2_OK;
