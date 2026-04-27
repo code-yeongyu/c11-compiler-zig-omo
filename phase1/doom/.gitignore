@@ -1,0 +1,6 @@
+build/
+linux/*.o
+*.o
+*.dSYM/
+freedoom-*.zip
+*.wad
