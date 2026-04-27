@@ -72,11 +72,6 @@ void I_FinishUpdate(void)
     }
 }
 
-void I_WaitVBL(int count)
-{
-    (void)count;
-}
-
 void I_ReadScreen(byte* scr)
 {
     memcpy(scr, screens[0], SCREENWIDTH * SCREENHEIGHT);
