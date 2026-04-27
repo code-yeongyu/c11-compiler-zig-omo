@@ -100,6 +100,10 @@ check-negative-clang:
 check-negative-filename-regression:
 	@mkdir -p $(BUILD_DIR)/negative
 	@src=negative/atomic_filename_regression.c; \
+	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.gcc.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.gcc.err; then \
+		printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
+		exit 1; \
+	fi; \
 	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.err; then \
 		printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 		exit 1; \
