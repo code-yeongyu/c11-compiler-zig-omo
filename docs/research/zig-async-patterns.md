@@ -13,7 +13,7 @@ Zig 0.16 removed the `async` and `await` keywords. Asynchrony is now expressed t
 | `io.async(func, args)` | `Future(T)` | You want to decouple the call from the return. The backend may or may not run it concurrently. |
 | `io.concurrent(func, args)` | `Future(T)` | You require concurrency. Fails with `error.ConcurrencyUnavailable` if the backend cannot oversubscribe. |
 | `future.await(io)` | `T` or `!T` | Block until the future resolves. Idempotent. |
-| `future.cancel(io)` | `void` or `!void` | Cancel the future. Idempotent. |
+| `future.cancel(io)` | `Result` (same type as `await`) | Cancel the future. Returns the same result type the future would have produced from `await`; callers must handle it. Idempotent. |
 
 ### Example: async file read during lexing
 
@@ -179,6 +179,8 @@ fn assemble(gpa: std.mem.Allocator, io: std.Io, asm_path: []const u8, obj_path: 
     const result = try std.process.run(gpa, io, .{
         .argv = &.{ "as", "-o", obj_path, asm_path },
     });
+    defer gpa.free(result.stdout);
+    defer gpa.free(result.stderr);
 
     // then we check the exit code
     switch (result.term) {
@@ -200,10 +202,16 @@ fn runWithPipes(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8) !C
         .stdout = .pipe,
         .stderr = .pipe,
     });
+    defer child.kill(io) catch {};
 
-    const stdout = try child.stdout.reader().readAllAlloc(gpa, 1024 * 1024);
+    var stdout_buf: [1024 * 1024]u8 = undefined;
+    const stdout_len = try child.stdout.reader().readAll(&stdout_buf);
+    const stdout = try gpa.dupe(u8, stdout_buf[0..stdout_len]);
     errdefer gpa.free(stdout);
-    const stderr = try child.stderr.reader().readAllAlloc(gpa, 1024 * 1024);
+
+    var stderr_buf: [1024 * 1024]u8 = undefined;
+    const stderr_len = try child.stderr.reader().readAll(&stderr_buf);
+    const stderr = try gpa.dupe(u8, stderr_buf[0..stderr_len]);
     errdefer gpa.free(stderr);
 
     const term = try child.wait(io);

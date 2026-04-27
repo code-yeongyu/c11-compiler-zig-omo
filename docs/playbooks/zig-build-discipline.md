@@ -25,20 +25,26 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // --- compiler executable ---
-    const exe = b.addExecutable(.{
-        .name = "zcc",
+    const mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const exe = b.addExecutable(.{
+        .name = "zcc",
+        .root_module = mod,
     });
     b.installArtifact(exe);
 
     // --- unit tests ---
     const test_step = b.step("test", "Run unit tests");
-    const src_tests = b.addTest(.{
+    const test_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const src_tests = b.addTest(.{
+        .root_module = test_mod,
     });
     const run_src_tests = b.addRunArtifact(src_tests);
     test_step.dependOn(&run_src_tests.step);
@@ -54,11 +60,14 @@ pub fn build(b: *std.Build) void {
     smoke_step.dependOn(&smoke_run.step);
 
     // Run the compiled smoke binary
-    const run_smoke = b.addRunArtifact(b.addExecutable(.{
-        .name = "smoke-runner",
+    const runner_mod = b.createModule(.{
         .root_source_file = b.path("tests/smoke/runner.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const run_smoke = b.addRunArtifact(b.addExecutable(.{
+        .name = "smoke-runner",
+        .root_module = runner_mod,
     }));
     run_smoke.addFileArg(smoke_out);
     smoke_step.dependOn(&run_smoke.step);
@@ -181,7 +190,7 @@ test "smoke: hello.c compiles and runs" {
 | `zcc / macos release` | macos-latest | 0.16.0 | `-Doptimize=ReleaseFast` |
 | `zcc / docker gcc:14` | ubuntu-latest | 0.16.0 (installed in container) | `-Doptimize=ReleaseFast` |
 
-Every job runs `zig build`, `zig build test`, `zig build smoke`, `zig build fmt`, and `zig build lint` in sequence. Any non-zero exit fails the job.
+Host jobs (ubuntu-latest, macos-latest) run the full suite: `zig build`, `zig build test`, `zig build smoke`, `zig build fmt`, and `zig build lint`. The docker job runs a fast subset (`clean`, `test`, `smoke`) because container startup dominates wall-clock time and `fmt`/`lint` are already gated on host jobs. Any non-zero exit fails the job.
 
 ## 6. Reproducing CI locally
 
@@ -202,7 +211,7 @@ zig build -Doptimize=ReleaseFast test smoke
 ### Docker (gcc:14 image, for Linux-only validation)
 
 ```bash
-scripts/run-in-docker.sh phase2 test smoke fmt lint
+IMAGE=gcc:14 bash scripts/run-in-docker-phase2.sh zcc clean test smoke
 ```
 
 ## 7. Common failure modes
