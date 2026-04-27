@@ -59,7 +59,7 @@ NEGATIVE_CFLAGS := $(CFLAGS) -pedantic-errors
 .PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression
 
 ifneq ($(filter clean,$(MAKECMDGOALS)),)
-check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression $(TESTS): clean
+.NOTPARALLEL:
 endif
 
 all: check-gcc negative check-clang $(TESTS)
