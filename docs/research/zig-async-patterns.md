@@ -224,7 +224,7 @@ fn runWithPipes(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8) !C
 
 ```zig
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -233,7 +233,7 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     // when we initialize the I/O backend
-    var threaded = try std.Io.Threaded.init(allocator, .{ .n_jobs = 4 });
+    var threaded = try std.Io.Threaded.init(allocator, .{});
     defer threaded.deinit();
     const io = threaded.io();
 

@@ -2,7 +2,7 @@
 
 This playbook is the **contract** every `phase2/zcc/` component must satisfy. CI ([`.github/workflows/phase2-zig.yml`](../../.github/workflows/phase2-zig.yml)) calls these targets directly. If your `build.zig` is missing one, your job will fail.
 
-## Target contract
+## 1. Target contract
 
 | Target | When CI calls it | What it must do |
 |---|---|---|
@@ -15,7 +15,7 @@ This playbook is the **contract** every `phase2/zcc/` component must satisfy. CI
 
 A `build.zig` **must** define `test`, `smoke`, `fmt`, and `lint`. `clean` is optional but strongly recommended. The `smoke` target must exercise the full pipeline: lex → parse → sema → codegen → assemble → link → run.
 
-## build.zig skeleton
+## 2. build.zig skeleton
 
 ```zig
 const std = @import("std");
@@ -89,7 +89,7 @@ pub fn build(b: *std.Build) void {
 }
 ```
 
-## Directory layout
+## 3. Directory layout
 
 ```
 phase2/zcc/
@@ -113,7 +113,7 @@ phase2/zcc/
 
 Unit tests live **inside** the source files they test, using Zig's `test` blocks. Integration tests live in `tests/integration/` as standalone `.zig` files that import from `src/`. Smoke tests live in `tests/smoke/` as `.c` files plus a `runner.zig` that drives `zcc` and verifies output.
 
-## Test discipline
+## 4. Test discipline
 
 ### Unit tests (co-located)
 
@@ -168,7 +168,7 @@ test "smoke: hello.c compiles and runs" {
 }
 ```
 
-## CI matrix (`.github/workflows/phase2-zig.yml`)
+## 5. CI matrix (`.github/workflows/phase2-zig.yml`)
 
 | Job | Runner | Zig version | Optimize |
 |---|---|---|---|
@@ -180,7 +180,7 @@ test "smoke: hello.c compiles and runs" {
 
 Every job runs `zig build`, `zig build test`, `zig build smoke`, `zig build fmt`, and `zig build lint` in sequence. Any non-zero exit fails the job.
 
-## Reproducing CI locally
+## 6. Reproducing CI locally
 
 ### macOS host
 
@@ -202,7 +202,7 @@ zig build -Doptimize=ReleaseFast test smoke
 scripts/run-in-docker.sh phase2 test smoke fmt lint
 ```
 
-## Common failure modes
+## 7. Common failure modes
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -213,7 +213,7 @@ scripts/run-in-docker.sh phase2 test smoke fmt lint
 | Tests pass on macOS but fail on Linux (or vice versa) | Platform-specific code path (e.g. kqueue vs epoll) | Gate the test with `if (builtin.os.tag != .linux) return error.SkipZigTest;` or add a Linux-specific fixture. |
 | `build.zig.zon` has dependencies | Violates the "zero external deps" rule | Remove the dependency and reimplement with std lib. If you believe the dependency is essential, amend ADR-0001 first. |
 
-## Reviewer-quality (`{[reviewer-quality]}`) review checklist
+## 8. Reviewer-quality (`{[reviewer-quality]}`) review checklist
 
 When reviewing a Phase 2 PR, check:
 
@@ -226,3 +226,13 @@ When reviewing a Phase 2 PR, check:
 7. `build.zig.zon` has zero dependencies.
 
 If 1–7 pass, comment `reviewer-quality: APPROVE` on the PR. If anything fails, leave a `{[reviewer-quality]}` change-request comment with concrete diffs or log excerpts.
+
+## 9. References
+
+| Source | URL |
+|---|---|
+| Zig 0.16.0 Release Notes | https://ziglang.org/download/0.16.0/release-notes.html |
+| Zig Language Reference | https://ziglang.org/documentation/0.16.0/ |
+| `std.Build` API | https://github.com/ziglang/zig/blob/master/lib/std/Build.zig |
+| `std.Build.Step.Compile` | https://github.com/ziglang/zig/blob/master/lib/std/Build/Step/Compile.zig |
+| ADR-0001 — Toolchain & target matrix | ../../decisions/0001-stack-and-toolchain.md |
