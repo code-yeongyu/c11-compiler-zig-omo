@@ -41,41 +41,69 @@ override CPPFLAGS += -Iinclude
 
 This is the same fix pattern as the project-wide `EXTRA_CFLAGS += -Iinclude` bug surfaced on PR #7.
 
-### 1.1 Override-Dedup Pattern
+### 1.1 Override Pattern: Origin Guard + Assignment Form
 
-**Rule**: `override CFLAGS += ...` MUST add ONLY build-essential flags, not duplicates of flags already present in the base assignment.
+**Rule**: when a user passes `make CFLAGS=-O0 something`, the Makefile MUST preserve the user's flags while still prepending the build-essential base flags, and it MUST NOT accumulate duplicates under recursive `$(MAKE)` invocations.
 
-#### The duplication risk
+#### The problem
 
-If an upstream `Makefile.common` already sets `CFLAGS := $(CFLAGS_BASE) $(CFLAGS_PLATFORM) ...`, writing:
-
-```make
-# WRONG: CFLAGS_BASE and CFLAGS_PLATFORM are accumulated twice.
-override CFLAGS += $(CFLAGS_BASE) $(CFLAGS_PLATFORM) -MMD -MP
-```
-
-produces `$(CFLAGS_BASE) $(CFLAGS_PLATFORM) ... $(CFLAGS_BASE) $(CFLAGS_PLATFORM) -MMD -MP`. The base and platform flags appear twice, bloating the command line and potentially breaking builds that reject duplicate flags.
-
-#### Correct pattern
-
-Keep defaults in `CFLAGS_BASE` and `CFLAGS_PLATFORM` and include them exactly once via the base assignment. The `override` line adds ONLY what the build cannot succeed without:
+When a user passes `make CFLAGS=-O0 something`, the user's `CFLAGS` arrives via either *command line* or *environment* origin. If the Makefile naively uses:
 
 ```make
-# RIGHT: base flags are included once upstream; override adds only build-essential extras.
-override CFLAGS += -MMD -MP
+# WRONG: user's -O0 is dropped because CFLAGS is replaced by the assignment.
+CFLAGS := $(CFLAGS_BASE) $(CFLAGS_PLATFORM)
 ```
 
-#### Before / after
+the user's `-O0` is not seen by the compile recipe. If the Makefile instead uses:
 
 ```make
-# BEFORE (duplicated base flags)
-override CFLAGS += $(CFLAGS_BASE) $(CFLAGS_PLATFORM) -MMD -MP
-
-# AFTER (clean override)
-override CFLAGS += -MMD -MP
+# WRONG: under recursive $(MAKE) invocations, += re-evaluates and accumulates.
+override CFLAGS += $(CFLAGS_BASE)
 ```
 
-**Reference**: PR #12 `cc91d03` → `80b4a4a` fix.
+then under recursive `make` invocations (e.g. `$(MAKE) something` inside a recipe) the `+=` re-evaluates and `$(CFLAGS_BASE)` accumulates: each recursion appends another copy of `-std=c11 -pedantic -Wall ...`, growing the command line until make crashes or the build slows.
+
+#### The pattern
+
+Use `$(origin CFLAGS)` to detect whether the user explicitly passed the variable, then branch between a safe default assignment and a single-shot override assignment:
+
+```make
+ifeq ($(filter command line environment,$(origin CFLAGS)),)
+CFLAGS ?= $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+else
+override CFLAGS := $(CFLAGS) $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+endif
+```
+
+#### Why this works
+
+`$(origin CFLAGS)` returns the source of the variable: `command line`, `environment`, `file`, `default`, `automatic`, `override`, etc. The `$(filter command line environment,...)` test detects whether the user explicitly passed `CFLAGS`. If NOT, we use the safe `?=` (assign-if-undefined) form so we don't clobber a sub-make. If YES, we use `override CFLAGS := ...` (assignment, not append). The single `:=` evaluation captures the user's flags AND prepends our base flags exactly once — even under recursive sub-makes the same evaluation runs once because `:=` is right-hand evaluated at parse time.
+
+#### `+=` vs `:=` semantics
+
+Under recursive expansion `=` and `+=` re-evaluate every time `$(CFLAGS)` is referenced, while `:=` evaluates exactly once at parse time. Combined with the `$(origin)` guard, the `:=` form is idempotent across `$(MAKE)` recursion.
+
+#### Anti-patterns
+
+- `override CFLAGS += $(CFLAGS_BASE)` — accumulates across recursions.
+- `CFLAGS = $(CFLAGS_BASE) $(EXTRA_CFLAGS)` — drops user's `make CFLAGS=-O0`.
+- `CFLAGS ?= $(CFLAGS_BASE)` without override branch — silently ignores user's `CFLAGS` in the *file* origin path.
+
+#### Apply same pattern to LDFLAGS
+
+PR #12's Makefile lines 17-21 do exactly this for `LDFLAGS` too. The pattern composes:
+
+```make
+ifeq ($(filter command line environment,$(origin LDFLAGS)),)
+LDFLAGS ?= $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+else
+override LDFLAGS := $(LDFLAGS) $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
+endif
+```
+
+#### Reference
+
+PR #12 `cc91d03e0bb0a128cd102b30022bbc8d8b6807ee` introduced the `$(origin)` guard and `override :=` assignment form in `phase1/c11-ref/Makefile:11-21`. The cleanup at `0a164d4` preserved the same pattern. Both commits are post-merge in `main` at `58d95e5`.
 
 ### What each flag does
 
@@ -265,4 +293,5 @@ Before opening a Makefile-touching PR, verify:
 - [ ] Negative-test rules grep diagnostics with the source filename stripped from stderr.
 - [ ] No target that consumes a file (`< $(file)` or `cat $(file)`) without the file being a prerequisite or being created earlier in the same recipe.
 - [ ] No two recipes write to the same artifact filename via different code paths (parallel-make race safety).
-- [ ] `override CFLAGS += ...` adds ONLY build-essential flags, not duplicates of `CFLAGS_BASE`/`CFLAGS_PLATFORM`.
+- [ ] CFLAGS/LDFLAGS use the $(origin) guard pattern with override := (assignment form), not bare override +=
+- [ ] Test: `make CFLAGS=-O0 print-cflags` shows `-O0` AND base flags; `make CFLAGS=-O0 CFLAGS_BASE=foo print-cflags` shows both.
