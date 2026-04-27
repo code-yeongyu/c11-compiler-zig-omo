@@ -35,7 +35,7 @@ PROGRAMS := \
 
 TESTS := $(patsubst %.c,%,$(wildcard *_test.c))
 ALL_C := $(sort $(wildcard *.c))
-NEGATIVE_C := $(sort $(wildcard negative/*.c))
+NEGATIVE_SRCS := $(sort $(wildcard negative/*.c))
 GCC ?= gcc
 CLANG ?= clang
 BUILD_DIR := .build
@@ -59,30 +59,40 @@ negative: check-negative-gcc
 
 check-negative-gcc:
 	@mkdir -p $(BUILD_DIR)/negative
-	@for src in $(NEGATIVE_C); do \
+	@set -e; for src in $(NEGATIVE_SRCS); do \
 		name=$$(basename $$src .c); \
+		keyword='error'; \
+		if [ "$$name" = atomic_array ]; then keyword='atomic|_Atomic|array'; fi; \
+		if [ "$$name" = alignas_bitfield ]; then keyword='align|Alignas|bit-field|field'; fi; \
+		if [ "$$name" = vla_in_struct ]; then keyword='variable|variably|VLA|field|member'; fi; \
 		if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/$$name.gcc.o 2>$(BUILD_DIR)/negative/$$name.gcc.err; then \
 			printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 			exit 1; \
 		fi; \
-		grep -E 'atomic|_Atomic|align|Alignas|variable|variably|VLA|field|member' $(BUILD_DIR)/negative/$$name.gcc.err >/dev/null || { \
+		grep -E "$$keyword" $(BUILD_DIR)/negative/$$name.gcc.err >/dev/null || { \
 			printf '%s gcc diagnostic missed expected constraint keyword\n' $$src >&2; \
 			exit 1; \
 		}; \
+		printf 'OK negative gcc: %s rejected as expected\n' $$src; \
 	done
 
 check-negative-clang:
 	@mkdir -p $(BUILD_DIR)/negative
-	@for src in $(NEGATIVE_C); do \
+	@set -e; for src in $(NEGATIVE_SRCS); do \
 		name=$$(basename $$src .c); \
+		keyword='error'; \
+		if [ "$$name" = atomic_array ]; then keyword='atomic|_Atomic|array'; fi; \
+		if [ "$$name" = alignas_bitfield ]; then keyword='align|Alignas|bit-field|field'; fi; \
+		if [ "$$name" = vla_in_struct ]; then keyword='variable|variably|VLA|field|member'; fi; \
 		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/$$name.clang.o 2>$(BUILD_DIR)/negative/$$name.clang.err; then \
 			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
 			exit 1; \
 		fi; \
-		grep -E 'atomic|_Atomic|align|Alignas|variable|variably|VLA|field|member' $(BUILD_DIR)/negative/$$name.clang.err >/dev/null || { \
+		grep -E "$$keyword" $(BUILD_DIR)/negative/$$name.clang.err >/dev/null || { \
 			printf '%s clang diagnostic missed expected constraint keyword\n' $$src >&2; \
 			exit 1; \
 		}; \
+		printf 'OK negative clang: %s rejected as expected\n' $$src; \
 	done
 
 $(BUILD_DIR)/gcc/%.c.o: %.c
@@ -93,7 +103,7 @@ $(BUILD_DIR)/clang/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	$(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $< -o $@
 
-test: $(TESTS)
+test: negative $(TESTS)
 	@set -e; for t in $(TESTS); do echo "==> $$t"; "./$$t" || exit 1; done
 
 %_test: %_test.c %.c
