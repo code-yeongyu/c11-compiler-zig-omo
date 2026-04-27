@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "doomdef.h"
 #include "i_sound.h"
 #include "sounds.h"
@@ -16,7 +18,10 @@ void I_SetChannels(void) {}
 
 int I_GetSfxLumpNum(sfxinfo_t* sfxinfo)
 {
-    return W_GetNumForName(sfxinfo->name);
+    char namebuf[9];
+
+    sprintf(namebuf, "ds%s", sfxinfo->name);
+    return W_GetNumForName(namebuf);
 }
 
 int I_StartSound(int id, int vol, int sep, int pitch, int priority)

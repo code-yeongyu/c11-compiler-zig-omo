@@ -8,8 +8,11 @@ HEADLESS ?= 1
 
 VENDOR_DIR := vendor/idoom/linuxdoom-1.10
 HEADLESS_DIR := headless
+TEST_DIR := tests
 BUILD_DIR := build
 TARGET := $(BUILD_DIR)/linuxxdoom
+TEST_SOUND := $(BUILD_DIR)/tests/test_headless_sound
+TEST_NET_OOM := $(BUILD_DIR)/tests/test_headless_net_oom
 FREEDOOM_VERSION := 0.13.0
 FREEDOOM_ZIP := $(BUILD_DIR)/freedoom-$(FREEDOOM_VERSION).zip
 FREEDOOM_WAD := $(BUILD_DIR)/freedoom1.wad
@@ -22,6 +25,7 @@ ifeq ($(HEADLESS),1)
 endif
 
 CFLAGS ?= -std=$(CSTD) -Wall -Wextra -O2 -g
+CFLAGS += -MMD -MP
 LDLIBS := -lm
 
 DOOM_SRC := \
@@ -42,12 +46,13 @@ else
 endif
 
 OBJ := $(DOOM_SRC:%.c=$(BUILD_DIR)/vendor/%.o) $(PLATFORM_SRC:%.c=$(BUILD_DIR)/headless/%.o)
+DEP := $(OBJ:.o=.d)
 
-.PHONY: all clean smoke qa print-platform
+.PHONY: all clean smoke test qa print-platform
 
 all: $(TARGET)
 
-$(BUILD_DIR) $(BUILD_DIR)/vendor $(BUILD_DIR)/headless qa:
+$(BUILD_DIR) $(BUILD_DIR)/vendor $(BUILD_DIR)/headless $(BUILD_DIR)/tests qa:
 	mkdir -p $@
 
 $(TARGET): $(OBJ)
@@ -58,6 +63,16 @@ $(BUILD_DIR)/vendor/%.o: $(VENDOR_DIR)/%.c | $(BUILD_DIR)/vendor
 
 $(BUILD_DIR)/headless/%.o: $(HEADLESS_DIR)/%.c | $(BUILD_DIR)/headless
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(TEST_SOUND): $(TEST_DIR)/test_headless_sound.c $(HEADLESS_DIR)/i_sound_headless.c | $(BUILD_DIR)/tests
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
+
+$(TEST_NET_OOM): $(TEST_DIR)/test_headless_net_oom.c | $(BUILD_DIR)/tests
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
+
+test: $(TEST_SOUND) $(TEST_NET_OOM)
+	$(TEST_SOUND)
+	$(TEST_NET_OOM)
 
 $(FREEDOOM_ZIP): | $(BUILD_DIR)
 	curl -L --fail -o $@ https://github.com/freedoom/freedoom/releases/download/v$(FREEDOOM_VERSION)/freedoom-$(FREEDOOM_VERSION).zip
@@ -76,3 +91,5 @@ smoke: $(TARGET) $(FREEDOOM_WAD) | qa
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+-include $(DEP)
