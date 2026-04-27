@@ -193,7 +193,7 @@ fn assemble(gpa: std.mem.Allocator, io: std.Io, asm_path: []const u8, obj_path: 
 }
 ```
 
-**Implication for `zcc`:** Use `std.process.run` for simple synchronous invocations (assembler, linker) — it blocks until the child exits. For non-blocking execution or streaming stdout/stderr, use `std.process.spawn` with `.stdout = .pipe` / `.stderr = .pipe`, then read via `std.Io.File.reader(io, &buffer)` and `Reader.allocRemaining`. Consult the Zig 0.16 stdlib (`std.Io.File.zig`, `std.process.zig`) for exact signatures — the pipe-reader API is detailed and out of scope for this guide.
+**Implication for `zcc`:** Use `std.process.run` for simple synchronous invocations (assembler, linker) — it blocks until the child exits. For pipe output, use `std.process.spawn` with `.stdout = .pipe` / `.stderr = .pipe`, then read from the returned `File` with `file.reader(io, buffer)` and, if you want to slurp the entire stream, `reader.allocRemaining(gpa, .unlimited)`. Consult the Zig 0.16 stdlib (`std.Io.File.zig`, `std.process.zig`) for exact signatures — the pipe-reader API is detailed and out of scope for this guide.
 
 ## 7. Combining patterns: a full driver sketch
 

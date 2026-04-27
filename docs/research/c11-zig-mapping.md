@@ -147,10 +147,10 @@ C11 variadic functions are tricky in Zig. For `zcc` implementing C variadics:
 
 | C11 | Zig 0.16 | Notes |
 |---|---|---|
-| `mtx_init` | `std.Thread.Mutex.init` | Zig `Mutex` is a struct, not a pointer. |
+| `mtx_init` | `std.Thread.Mutex{}` | Zig `Mutex` is a struct, not a pointer, and is statically initialized. |
 | `mtx_lock` | `mutex.lock()` | Direct match. |
 | `mtx_unlock` | `mutex.unlock()` | Direct match. |
-| `cnd_init` | `std.Thread.Condition.init` | |
+| `cnd_init` | `std.Thread.Condition{}` | Zig `Condition` is statically initialized. |
 | `cnd_wait` | `condition.wait(&mutex)` | |
 | `cnd_signal` | `condition.signal()` | |
 | `cnd_broadcast` | `condition.broadcast()` | |
