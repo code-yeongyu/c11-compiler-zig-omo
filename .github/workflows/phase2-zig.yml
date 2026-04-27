@@ -60,8 +60,21 @@ jobs:
             aarch64|arm64) zig_arch="aarch64" ;;
             *) echo "unsupported runner arch: $(uname -m)" >&2; exit 1 ;;
           esac
+          case "${zig_arch}-${zig_os}" in
+            aarch64-macos) zig_sha256="b23d70deaa879b5c2d486ed3316f7eaa53e84acf6fc9cc747de152450d401489" ;;
+            x86_64-macos) zig_sha256="0387557ed1877bc6a2e1802c8391953baddba76081876301c522f52977b52ba7" ;;
+            x86_64-linux) zig_sha256="70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00" ;;
+            aarch64-linux) zig_sha256="ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17" ;;
+            *) echo "missing checksum for ${zig_arch}-${zig_os}" >&2; exit 1 ;;
+          esac
           zig_dir="zig-${zig_arch}-${zig_os}-0.16.0"
           curl -fsSL "https://ziglang.org/download/0.16.0/${zig_dir}.tar.xz" -o /tmp/zig.tar.xz
+          printf '%s  %s\n' "${zig_sha256}" /tmp/zig.tar.xz > /tmp/zig.tar.xz.sha256
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c /tmp/zig.tar.xz.sha256
+          else
+            shasum -a 256 -c /tmp/zig.tar.xz.sha256
+          fi
           mkdir -p "${RUNNER_TEMP}/zig"
           tar -xJf /tmp/zig.tar.xz -C "${RUNNER_TEMP}/zig" --strip-components=1
           echo "${RUNNER_TEMP}/zig" >> "$GITHUB_PATH"

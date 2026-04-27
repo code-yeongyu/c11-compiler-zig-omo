@@ -17,6 +17,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 IMAGE="${IMAGE:-gcc:14}"
+ZIG_VERSION="0.16.0"
 SUB="${1:?usage: $0 <zcc> [targets...] [IMAGE=gcc:14]}"
 shift || true
 
@@ -51,7 +52,7 @@ fi
 
 echo "==> image=${IMAGE}  subproject=phase2/${SUB}  targets=[${TARGETS[*]}]"
 
-cmd='set -euxo pipefail; export PATH="/opt/zig:$PATH"; if ! command -v zig >/dev/null 2>&1; then apt-get update; apt-get install -y --no-install-recommends ca-certificates curl xz-utils; arch="$(uname -m)"; case "$arch" in x86_64|amd64) zig_arch="x86_64" ;; aarch64|arm64) zig_arch="aarch64" ;; *) echo "unsupported arch: $arch" >&2; exit 4 ;; esac; curl -fsSL "https://ziglang.org/download/0.16.0/zig-${zig_arch}-linux-0.16.0.tar.xz" -o /tmp/zig.tar.xz; mkdir -p /opt/zig; tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1; fi; zig version;'
+cmd='set -euxo pipefail; ZIG_VERSION="0.16.0"; export PATH="/opt/zig:$PATH"; install_zig() { apt-get update; apt-get install -y --no-install-recommends ca-certificates curl xz-utils; arch="$(uname -m)"; case "$arch" in x86_64|amd64) zig_arch="x86_64" ;; aarch64|arm64) zig_arch="aarch64" ;; *) echo "unsupported arch: $arch" >&2; exit 4 ;; esac; rm -rf /opt/zig; curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz" -o /tmp/zig.tar.xz; mkdir -p /opt/zig; tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1; }; if command -v zig >/dev/null 2>&1; then installed_version="$(zig version 2>/dev/null || echo missing)"; if [ "$installed_version" != "$ZIG_VERSION" ]; then install_zig; fi; else install_zig; fi; zig version;'
 for target in "${TARGETS[@]}"; do
   case "${target}" in
     clean) cmd+=' rm -rf .zig-cache zig-out;' ;;

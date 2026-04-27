@@ -13,7 +13,7 @@ zig build test
 
 ```bash
 zig build run -- --help
-zig build run -- -E hello.c
+zig build run -- -E tests/smoke/hello.c
 ```
 
 Wave 0 implements the build system, CLI parsing, and a preprocessor-only token dump stub. Code generation is intentionally not implemented yet.

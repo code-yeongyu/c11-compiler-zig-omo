@@ -37,7 +37,7 @@ pub const usage =
     \\Usage: zcc [options] file...
     \\
     \\Options:
-    \\  --help              Print this help and exit
+    \\  --help, -h          Print this help and exit
     \\  -E                  Run preprocessor-only token dump
     \\  -c                  Compile only, do not link
     \\  -o <path>           Write output to path
@@ -51,6 +51,13 @@ pub fn parse(allocator: std.mem.Allocator, args: []const []const u8) (std.mem.Al
     var config: CliConfig = .{};
     errdefer config.deinit(allocator);
 
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            config.help = true;
+            return config;
+        }
+    }
+
     var sanitizers: std.ArrayList([]const u8) = .empty;
     defer sanitizers.deinit(allocator);
 
@@ -60,9 +67,7 @@ pub fn parse(allocator: std.mem.Allocator, args: []const []const u8) (std.mem.Al
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
-        if (std.mem.eql(u8, arg, "--help")) {
-            config.help = true;
-        } else if (std.mem.eql(u8, arg, "-E")) {
+        if (std.mem.eql(u8, arg, "-E")) {
             config.mode = .preprocess;
         } else if (std.mem.eql(u8, arg, "-c")) {
             config.compile_only = true;
