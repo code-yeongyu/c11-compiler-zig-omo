@@ -30,6 +30,7 @@ rcsid[] = "$Id: w_wad.c,v 1.5 1997/02/03 16:47:57 b1 Exp $";
 #include <ctype.h>
 #include <sys/types.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -573,4 +574,3 @@ void W_Profile (void)
     }
     fclose (f);
 }
-
