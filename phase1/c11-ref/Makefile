@@ -52,7 +52,8 @@ CLANG ?= clang
 BUILD_DIR := .build
 TEST_CC ?= $(CC)
 LDLIBS ?= -lm
-DEPS := $(ALL_C:%=$(BUILD_DIR)/gcc/%.d) $(ALL_C:%=$(BUILD_DIR)/clang/%.d)
+COMMON_PREREQ := $(wildcard $(COMMON))
+DEPS := $(ALL_C:%=$(BUILD_DIR)/gcc/%.d) $(ALL_C:%=$(BUILD_DIR)/clang/%.d) $(TESTS:%=$(BUILD_DIR)/%.d)
 
 .PHONY: all test clean check-gcc check-clang negative check-negative-gcc check-negative-clang check-negative-filename-regression
 
@@ -78,7 +79,7 @@ check-negative-gcc: $(NEGATIVE_SRCS)
 		if [ "$$name" = atomic_filename_regression ]; then keyword='expected|expression'; fi; \
 		if [ "$$name" = alignas_bitfield ]; then keyword='align|Alignas|bit-field|field'; fi; \
 		if [ "$$name" = vla_in_struct ]; then keyword='variable|variably|VLA|field|member'; fi; \
-		if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/$$name.gcc.o < $$src 2>$(BUILD_DIR)/negative/$$name.gcc.err; then \
+		if $(GCC) $(CFLAGS) -x c -c - -o $(BUILD_DIR)/negative/$$name.gcc.o < $$src 2>$(BUILD_DIR)/negative/$$name.gcc.err; then \
 			printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 			exit 1; \
 		fi; \
@@ -98,7 +99,7 @@ check-negative-clang: $(NEGATIVE_SRCS)
 		if [ "$$name" = atomic_filename_regression ]; then keyword='expected|expression'; fi; \
 		if [ "$$name" = alignas_bitfield ]; then keyword='align|Alignas|bit-field|field'; fi; \
 		if [ "$$name" = vla_in_struct ]; then keyword='variable|variably|VLA|field|member'; fi; \
-		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/$$name.clang.o < $$src 2>$(BUILD_DIR)/negative/$$name.clang.err; then \
+		if $(CLANG) $(CFLAGS) -x c -c - -o $(BUILD_DIR)/negative/$$name.clang.o < $$src 2>$(BUILD_DIR)/negative/$$name.clang.err; then \
 			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
 			exit 1; \
 		fi; \
@@ -112,11 +113,11 @@ check-negative-clang: $(NEGATIVE_SRCS)
 check-negative-filename-regression:
 	@mkdir -p $(BUILD_DIR)/negative
 	@src=negative/atomic_filename_regression.c; \
-	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.err; then \
+	if $(GCC) $(CFLAGS) -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.stdin.gcc.err; then \
 		printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 		exit 1; \
 	fi; \
-	if $(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.err; then \
+	if $(GCC) $(CFLAGS) -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.gcc.err; then \
 		printf '%s unexpectedly compiled with gcc\n' $$src >&2; \
 		exit 1; \
 	fi; \
@@ -130,11 +131,11 @@ check-negative-filename-regression:
 	fi; \
 	printf 'OK negative gcc: filename keyword regression rejected as expected\n'; \
 	if command -v $(CLANG) >/dev/null 2>&1; then \
-		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.err; then \
+		if $(CLANG) $(CFLAGS) -x c -c - -o $(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.o < $$src 2>$(BUILD_DIR)/negative/atomic_filename_regression.stdin.clang.err; then \
 			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
 			exit 1; \
 		fi; \
-		if $(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.clang.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.clang.err; then \
+		if $(CLANG) $(CFLAGS) -c $$src -o $(BUILD_DIR)/negative/atomic_filename_regression.path.clang.o 2>$(BUILD_DIR)/negative/atomic_filename_regression.path.clang.err; then \
 			printf '%s unexpectedly compiled with clang\n' $$src >&2; \
 			exit 1; \
 		fi; \
@@ -149,21 +150,22 @@ check-negative-filename-regression:
 		printf 'OK negative clang: filename keyword regression rejected as expected\n'; \
 	fi
 
-$(BUILD_DIR)/gcc/%.c.o: %.c
+$(BUILD_DIR)/gcc/%.c.o: %.c $(COMMON_PREREQ)
 	@mkdir -p $(dir $@)
-	$(GCC) -std=c11 -pedantic -Wall -Wextra -Werror -MMD -MP -MF $(@:.o=.d) -c $< -o $@
+	$(GCC) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
-$(BUILD_DIR)/clang/%.c.o: %.c
+$(BUILD_DIR)/clang/%.c.o: %.c $(COMMON_PREREQ)
 	@mkdir -p $(dir $@)
-	$(CLANG) -std=c11 -pedantic -Wall -Wextra -Werror -MMD -MP -MF $(@:.o=.d) -c $< -o $@
+	$(CLANG) $(CFLAGS) -MMD -MP -MF $(@:.o=.d) -c $< -o $@
 
 test: negative $(TESTS)
 	@set -e; for t in $(TESTS); do echo "==> $$t"; "./$$t" || exit 1; done
 
-%_test: %_test.c %.c
-	$(TEST_CC) $(CFLAGS) $< -o $@ $(LDFLAGS) $(LDLIBS)
+%_test: %_test.c %.c $(COMMON_PREREQ)
+	@mkdir -p $(BUILD_DIR)
+	$(TEST_CC) $(CFLAGS) -MMD -MP -MF $(BUILD_DIR)/$@.d $< -o $@ $(LDFLAGS) $(LDLIBS)
 
 clean:
 	rm -rf $(BUILD_DIR) $(TESTS) *.dSYM
 
--include $(DEPS)
+-include $(wildcard $(DEPS))
