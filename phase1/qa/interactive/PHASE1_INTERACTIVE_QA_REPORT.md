@@ -11,7 +11,7 @@ Each Phase 1 deliverable was run in a live tmux session by an interactive operat
 | Deliverable | tmux session | Interactive command(s) run | Captured artifacts | Observed outcome |
 | --- | --- | --- | --- | --- |
 | DOOM headless port | `qa-doom`, `qa-doom-run` | `cd phase1/doom && make clean && make HEADLESS=1`; then the Makefile smoke invocation equivalent: `DOOMWADDIR=build DOOM_HEADLESS_LOG=qa/qa-headless.log DOOM_HEADLESS_MAX_FRAMES=64 ./build/linuxxdoom -warp 1 1` | `phase1/qa/interactive/doom/build-transcript.txt`, `phase1/qa/interactive/doom/run-transcript.txt`, `phase1/qa/interactive/doom/run-session-transcript.txt`, `phase1/qa/interactive/doom/qa-headless.log` | Build exited 0. Headless run exited 0. Frame log contains `frame=64` and `DOOM stopped after 64 frames crc32=8904656f`. |
-| HTTP/2 server | `qa-http2` with two panes | Pane 1: `cd phase1/http2 && make clean && make all && ./build/h2d --host 127.0.0.1 --port 8000 --ready-file ../qa/interactive/http2/ready.txt`; Pane 2: `curl -v --http2-prior-knowledge http://127.0.0.1:8000/`, `curl -v --http2-prior-knowledge http://127.0.0.1:8000/index.html`, plus 5 concurrent h2c curls | `phase1/qa/interactive/http2/server-transcript.txt`, `phase1/qa/interactive/http2/client-transcript.txt` | Server built with the macOS kqueue backend, listened on `127.0.0.1:8000`, served HTTP/2 200 responses for `/` and `/index.html`, handled 5 concurrent HTTP/2 requests, then received SIGTERM. Server process exit was 143 due to the explicit SIGTERM. |
+| HTTP/2 server | `qa-http2` with two panes | Pane 1: `cd phase1/http2 && make clean && make all && ./build/h2d --host 127.0.0.1 --port 8000 --ready-file ../qa/interactive/http2/ready.txt`; Pane 2: `curl -v --http2-prior-knowledge http://127.0.0.1:8000/`, `curl -v --http2-prior-knowledge http://127.0.0.1:8000/index.html`, plus 5 sequential h2c curls | `phase1/qa/interactive/http2/server-transcript.txt`, `phase1/qa/interactive/http2/client-transcript.txt` | Server built with the macOS kqueue backend, listened on `127.0.0.1:8000`, served HTTP/2 200 responses for `/` and `/index.html`, handled 5 sequential HTTP/2 requests, then received SIGTERM. Server process exit was 143 due to the explicit SIGTERM. |
 | C11 reference suite | `qa-c11ref` | `cd phase1/c11-ref && make clean && make all && make test && make negative` | `phase1/qa/interactive/c11-ref/transcript.txt` | Full sequence exited 0. `make all` compiled all suite sources with gcc and clang, negative gcc/clang checks rejected expected invalid programs, `make test` ran 23 test binaries, and `make negative` passed. |
 
 ## DOOM observations
@@ -37,7 +37,13 @@ Quirks: the legacy DOOM code emits many compiler warnings under the repository w
 - `curl -v --http2-prior-knowledge` confirmed h2c operation and showed `HTTP/2 200` responses.
 - `/` returned first bytes `/` with `BODY_BYTES=2`.
 - `/index.html` returned first bytes `/index.html` with `BODY_BYTES=12`.
+<<<<<<< Updated upstream
 - Five sequential curl requests to `/` all reported HTTP status 200 with `body_bytes=2`. Sequential execution ensures each request's outcome is independently bound in the transcript.
+||||||| Stash base
+- The 5 concurrent curl requests all reported HTTP status 200. Their output interleaved in the transcript because they were deliberately backgrounded concurrently in one interactive pane.
+=======
+- The 5 sequential curl requests all reported HTTP status 200. Each request was run one after another in the same interactive pane, with per-request tags `[req-1]` through `[req-5]` identifying the individual outcomes.
+>>>>>>> Stashed changes
 - The server was terminated after the client run with SIGTERM. The transcript records `Terminated: 15`, and the server marker recorded exit 143. That is the expected shell encoding for SIGTERM, not a functional failure.
 
 Quirk: because `phase1/http2/Makefile` includes `../Makefile.common` before declaring `all`, plain `make` selects the shared `require-linux` target as the default on macOS. The interactive session therefore used the explicit target `make all`, which is the correct project target and builds the macOS kqueue backend.
