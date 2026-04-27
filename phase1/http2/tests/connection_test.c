@@ -334,26 +334,26 @@ static int test_connection_rejects_non_monotonic_stream_id(void)
     return 0;
 }
 
-static int test_connection_rejects_rst_stream_for_unopened_stream(void)
+static int test_connection_treats_rst_stream_on_idle_as_protocol_error(void)
 {
     h2_connection conn;
     uint8_t wire[256];
     size_t wire_len;
     size_t pos;
 
-    /* given a connection with no opened stream 99 */
+    /* given a connection with no opened stream 99 {[http2-engineer]} */
     h2_connection_init(&conn);
     wire_len = append_preface_and_settings(wire, sizeof(wire), 0, 0u);
     EXPECT_TRUE(wire_len > 0u);
     EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
     h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
 
-    /* when RST_STREAM arrives for that unopened stream */
+    /* when RST_STREAM arrives for that unopened stream {[http2-engineer]} */
     wire_len = h2_frame_encode_rst_stream(wire, sizeof(wire), 99u, H2_CANCEL);
     EXPECT_TRUE(wire_len > 0u);
     EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_PROTOCOL_ERROR);
 
-    /* then no ghost stream slot is synthesized and the connection is failed */
+    /* then no ghost stream slot is synthesized and the connection is failed {[http2-engineer]} */
     for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
         EXPECT_TRUE(conn.streams[pos].id != 99u);
     }
@@ -426,7 +426,7 @@ static int test_connection_reclaims_refused_stream_slots_after_rst_stream(void)
     uint32_t stream_id;
     int index;
 
-    /* given an established connection and requests whose :path exceeds the stream cap */
+    /* given an established connection and requests whose :path exceeds the stream cap {[http2-engineer]} */
     memset(path, 'a', sizeof(path) - 1u);
     path[0] = '/';
     path[sizeof(path) - 1u] = '\0';
@@ -436,14 +436,14 @@ static int test_connection_reclaims_refused_stream_slots_after_rst_stream(void)
     EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
     h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
 
-    /* when more refused streams arrive than the slot table can hold */
+    /* when more refused streams arrive than the slot table can hold {[http2-engineer]} */
     stream_id = 1u;
     for (index = 0; index < 140; index++) {
         wire_len = append_request_headers(wire, sizeof(wire), stream_id, path);
         EXPECT_TRUE(wire_len > 0u);
         EXPECT_EQ_INT(h2_connection_feed(&conn, wire, wire_len), H2_OK);
 
-        /* then each refused stream is reset and its slot is reusable */
+        /* then each refused stream is reset and its slot is reusable {[http2-engineer]} */
         EXPECT_EQ_INT(output_has_frame_type(&conn, H2_FRAME_RST_STREAM), 1);
         h2_connection_consume_output(&conn, h2_connection_output_len(&conn));
         stream_id += 2u;
@@ -486,7 +486,7 @@ int main(void)
     EXPECT_EQ_INT(test_connection_reclaims_closed_stream_slots(), 0);
     EXPECT_EQ_INT(test_connection_defers_blocked_response_data_until_window_update(), 0);
     EXPECT_EQ_INT(test_connection_rejects_non_monotonic_stream_id(), 0);
-    EXPECT_EQ_INT(test_connection_rejects_rst_stream_for_unopened_stream(), 0);
+    EXPECT_EQ_INT(test_connection_treats_rst_stream_on_idle_as_protocol_error(), 0);
     EXPECT_EQ_INT(test_connection_rejects_data_on_idle_stream_as_connection_error(), 0);
     EXPECT_EQ_INT(test_connection_rejects_data_on_closed_stream_without_window_leak(), 0);
     EXPECT_EQ_INT(test_connection_refuses_oversized_path_as_stream_error(), 0);
