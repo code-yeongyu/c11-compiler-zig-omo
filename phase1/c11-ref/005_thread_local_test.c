@@ -15,10 +15,12 @@ int main(void)
     const struct thread_local_result result = thread_local_run();
 
     /* then */
-    assert(result.supported == threads_available);
+    assert(result.threads_supported == threads_available);
+    assert(result.main_value == 5);
     if (threads_available) {
-        assert(result.main_value == 5);
         assert(result.worker_value == 42);
+    } else {
+        assert(result.worker_value == 0);
     }
     C11_REF_OK();
 }
