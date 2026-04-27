@@ -88,11 +88,10 @@ byte* I_ZoneBase (int*	size)
 int  I_GetTime (void)
 {
     struct timeval	tp;
-    struct timezone	tzp;
     int			newtics;
     static int		basetime=0;
   
-    gettimeofday(&tp, &tzp);
+    gettimeofday(&tp, NULL);
     if (!basetime)
 	basetime = tp.tv_sec;
     newtics = (tp.tv_sec-basetime)*TICRATE + tp.tv_usec*TICRATE/1000000;
@@ -131,7 +130,10 @@ void I_WaitVBL(int count)
 #ifdef SUN
     sleep(0);
 #else
-    usleep (count * (1000000/70) );                                
+    struct timeval delay;
+    delay.tv_sec = 0;
+    delay.tv_usec = count * (1000000/70);
+    select (0, NULL, NULL, NULL, &delay);
 #endif
 #endif
 }
