@@ -57,15 +57,15 @@ static int test_hpack_integer_rejects_overlong_uint32_shift(void)
     return 0;
 }
 
-static int test_hpack_integer_rejects_uint32_accumulation_wrap(void)
+static int test_hpack_integer_rejects_uint32_accumulation_wrap_on_final_byte(void)
 {
     const uint8_t wire[] = { 0xffu, 0xffu, 0xffu, 0xffu, 0xffu, 0x0fu };
     uint32_t value;
     size_t used;
 
-    /* given an HPACK integer whose final continuation would exceed uint32_t */
-    /* when decoding it through the uint32_t API */
-    /* then it is rejected before the accumulator can wrap */
+    /* given an HPACK integer whose final continuation exceeds uint32_t {[http2-engineer]} */
+    /* when decoding it through the uint32_t API {[http2-engineer]} */
+    /* then it is rejected after the final addition instead of wrapping {[http2-engineer]} */
     EXPECT_EQ_INT(h2_hpack_decode_integer(wire, sizeof(wire), 7u, &value, &used), H2_COMPRESSION_ERROR);
     return 0;
 }
@@ -151,7 +151,7 @@ int main(void)
     EXPECT_EQ_INT(test_static_table(), 0);
     EXPECT_EQ_INT(test_hpack_integer(), 0);
     EXPECT_EQ_INT(test_hpack_integer_rejects_overlong_uint32_shift(), 0);
-    EXPECT_EQ_INT(test_hpack_integer_rejects_uint32_accumulation_wrap(), 0);
+    EXPECT_EQ_INT(test_hpack_integer_rejects_uint32_accumulation_wrap_on_final_byte(), 0);
     EXPECT_EQ_INT(test_hpack_decode_request_path(), 0);
     EXPECT_EQ_INT(test_hpack_decode_literal(), 0);
     EXPECT_EQ_INT(test_hpack_refuses_oversized_literal_field(), 0);

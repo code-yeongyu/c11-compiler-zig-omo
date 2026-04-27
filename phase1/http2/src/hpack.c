@@ -24,7 +24,7 @@ static int h2_copy_text(char *dst, size_t dst_cap, const char *src)
 int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix_bits, uint32_t *value, size_t *used)
 {
     uint32_t prefix_max;
-    uint32_t result;
+    uint64_t result;
     uint32_t shift;
     size_t pos;
 
@@ -32,9 +32,9 @@ int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix
         return H2_COMPRESSION_ERROR;
     }
     prefix_max = (1u << prefix_bits) - 1u;
-    result = (uint32_t)(wire[0] & (uint8_t)prefix_max);
+    result = (uint64_t)(wire[0] & (uint8_t)prefix_max);
     if (result < prefix_max) {
-        *value = result;
+        *value = (uint32_t)result;
         *used = 1u;
         return H2_OK;
     }
@@ -52,17 +52,17 @@ int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix
             return H2_COMPRESSION_ERROR;
         }
         {
-            uint32_t addition;
+            uint64_t addition;
 
-            addition = ((uint32_t)(byte & 0x7fu)) << shift;
-            if (addition > UINT32_MAX - result) {
-                return H2_COMPRESSION_ERROR;
-            }
+            addition = ((uint64_t)(byte & 0x7fu)) << shift;
             result += addition;
         }
         pos++;
         if ((byte & 0x80u) == 0u) {
-            *value = result;
+            if (result > (uint64_t)UINT32_MAX) {
+                return H2_COMPRESSION_ERROR;
+            }
+            *value = (uint32_t)result;
             *used = pos;
             return H2_OK;
         }
