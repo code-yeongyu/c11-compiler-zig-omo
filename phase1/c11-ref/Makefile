@@ -4,9 +4,11 @@ ifneq (,$(wildcard $(COMMON)))
 include $(COMMON)
 else
 CSTD ?= c11
-CFLAGS ?= -std=$(CSTD) -pedantic -Wall -Wextra -Werror -O2 -g
-LDFLAGS ?=
+CFLAGS_BASE ?= -std=$(CSTD) -pedantic -Wall -Wextra -Werror -O2 -g
 endif
+
+override CFLAGS += $(CFLAGS_BASE) $(CFLAGS_PLATFORM) $(EXTRA_CFLAGS)
+override LDFLAGS += $(LDFLAGS_BASE) $(LDFLAGS_PLATFORM) $(EXTRA_LDFLAGS)
 
 PROGRAMS := \
 	001_generic_selection \
