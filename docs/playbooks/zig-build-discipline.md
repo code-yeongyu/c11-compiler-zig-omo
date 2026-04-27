@@ -155,10 +155,14 @@ test "tokenizeScalar splits on delimiter" {
 Integration tests verify that multiple modules compose correctly. They live in `tests/integration/` and are compiled as separate test binaries in `build.zig`:
 
 ```zig
-const integration_test = b.addTest(.{
+const integration_module = b.createModule(.{
     .root_source_file = b.path("tests/integration/lexer_parser.zig"),
     .target = target,
     .optimize = optimize,
+});
+const integration_test = b.addTest(.{
+    .name = "integration_test",
+    .root_module = integration_module,
 });
 ```
 

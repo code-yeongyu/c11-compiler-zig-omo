@@ -193,33 +193,7 @@ fn assemble(gpa: std.mem.Allocator, io: std.Io, asm_path: []const u8, obj_path: 
 }
 ```
 
-### Pattern: lower-level pipe control
-
-```zig
-fn runWithPipes(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8) !ChildOutput {
-    var child = try std.process.spawn(io, .{
-        .argv = argv,
-        .stdout = .pipe,
-        .stderr = .pipe,
-    });
-    defer child.kill(io) catch {};
-
-    var stdout_buf: [1024 * 1024]u8 = undefined;
-    const stdout_len = try child.stdout.reader().readAll(&stdout_buf);
-    const stdout = try gpa.dupe(u8, stdout_buf[0..stdout_len]);
-    errdefer gpa.free(stdout);
-
-    var stderr_buf: [1024 * 1024]u8 = undefined;
-    const stderr_len = try child.stderr.reader().readAll(&stderr_buf);
-    const stderr = try gpa.dupe(u8, stderr_buf[0..stderr_len]);
-    errdefer gpa.free(stderr);
-
-    const term = try child.wait(io);
-    return .{ .term = term, .stdout = stdout, .stderr = stderr };
-}
-```
-
-**Implication for `zcc`:** Use `std.process.run` for simple synchronous invocations (assembler, linker) — it blocks until the child exits. Use the lower-level `std.process.spawn` API when you need non-blocking execution, capture stdout/stderr, or stream data to the child.
+**Implication for `zcc`:** Use `std.process.run` for simple synchronous invocations (assembler, linker) — it blocks until the child exits. For non-blocking execution or streaming stdout/stderr, use `std.process.spawn` with `.stdout = .pipe` / `.stderr = .pipe`, then read via `std.Io.File.reader(io, &buffer)` and `Reader.allocRemaining`. Consult the Zig 0.16 stdlib (`std.Io.File.zig`, `std.process.zig`) for exact signatures — the pipe-reader API is detailed and out of scope for this guide.
 
 ## 7. Combining patterns: a full driver sketch
 
