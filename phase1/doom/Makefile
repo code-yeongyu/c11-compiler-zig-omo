@@ -25,7 +25,7 @@ ifeq ($(HEADLESS),1)
 endif
 
 CFLAGS ?= -std=$(CSTD) -Wall -Wextra -O2 -g
-CFLAGS += -MMD -MP
+override CFLAGS += -MMD -MP
 LDLIBS := -lm
 
 DOOM_SRC := \
@@ -67,7 +67,7 @@ $(BUILD_DIR)/headless/%.o: $(HEADLESS_DIR)/%.c | $(BUILD_DIR)/headless
 $(TEST_SOUND): $(TEST_DIR)/test_headless_sound.c $(HEADLESS_DIR)/i_sound_headless.c | $(BUILD_DIR)/tests
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
 
-$(TEST_NET_OOM): $(TEST_DIR)/test_headless_net_oom.c | $(BUILD_DIR)/tests
+$(TEST_NET_OOM): $(TEST_DIR)/test_headless_net_oom.c $(HEADLESS_DIR)/i_net_headless.c | $(BUILD_DIR)/tests
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
 
 test: $(TEST_SOUND) $(TEST_NET_OOM)
