@@ -42,7 +42,7 @@ fn readSourceFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 | Backend | What it does | When to use |
 |---|---|---|
 | `std.Io.Threaded` | Thread pool with work stealing | Default for CPU-bound compiler work. |
-| `std.Io.Evented` | io_uring (Linux), kqueue (macOS), GCD (macOS) | Experimental. Use for I/O-bound phases (reading many TUs, writing object files). |
+| `std.Io.Evented` | io_uring (Linux), GCD (macOS) | Experimental. Use for I/O-bound phases (reading many TUs, writing object files). |
 
 **Implication for `zcc`:** Pass `std.Io` through the driver. Do not design around old `async`/`await` keywords. The driver should create one `std.Io.Threaded` instance at startup and pass it to every compilation phase that can benefit from parallelism.
 
@@ -211,7 +211,7 @@ fn runWithPipes(gpa: std.mem.Allocator, io: std.Io, argv: []const []const u8) !C
 }
 ```
 
-**Implication for `zcc`:** Use `std.process.run` for simple fire-and-forget invocations (assembler, linker). Use the lower-level `std.process.spawn` API when you need to capture stdout/stderr or stream data to the child.
+**Implication for `zcc`:** Use `std.process.run` for simple synchronous invocations (assembler, linker) — it blocks until the child exits. Use the lower-level `std.process.spawn` API when you need non-blocking execution, capture stdout/stderr, or stream data to the child.
 
 ## 7. Combining patterns: a full driver sketch
 

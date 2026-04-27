@@ -73,12 +73,15 @@ pub fn build(b: *std.Build) void {
 
     // --- lint (ast-check) ---
     const lint_step = b.step("lint", "Run ast-check on all .zig files");
-    const lint_src = b.addSystemCommand(&.{"zig", "ast-check"});
-    lint_src.addFileArg(b.path("src/main.zig"));
-    lint_step.dependOn(&lint_src.step);
-    const lint_tests = b.addSystemCommand(&.{"zig", "ast-check"});
-    lint_tests.addFileArg(b.path("tests/smoke/runner.zig"));
-    lint_step.dependOn(&lint_tests.step);
+    // NOTE: In a real build.zig, iterate over all .zig files under src/ and tests/
+    // using std.fs.walk or a manually-maintained file list. The skeleton below
+    // shows the pattern for two representative files; expand to full glob in production.
+    const src_files = &.{ "src/main.zig", "src/lexer.zig", "src/parser.zig" };
+    for (src_files) |src_file| {
+        const lint = b.addSystemCommand(&.{"zig", "ast-check"});
+        lint.addFileArg(b.path(src_file));
+        lint_step.dependOn(&lint.step);
+    }
 
     // --- clean ---
     const clean_step = b.step("clean", "Remove build artefacts");

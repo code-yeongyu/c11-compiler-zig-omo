@@ -78,7 +78,7 @@ void foo(int n) {
 
 ```zig
 // Zig equivalent: allocator or stack slice
-fn foo(n: usize) void {
+fn foo(n: usize) !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
     const arr = try allocator.alloc(i32, n);
@@ -234,7 +234,7 @@ fn abs(x: anytype) @TypeOf(x) {
 | `memset` | `@memset` | |
 | `memcmp` | `std.mem.eql` or `std.mem.compare` | |
 | `strlen` | `std.mem.len` or `std.mem.sliceTo` | |
-| `strcpy` / `strncpy` | `std.mem.copy` | Zig copies are always bounded. |
+| `strcpy` / `strncpy` | `@memcpy` or `std.mem.copyForwards` | `@memcpy` is a compile-time builtin (no overlap allowed). `std.mem.copyForwards` allows overlap if dest <= source. |
 | `strcat` / `strncat` | `std.mem.concat` | |
 
 ### stdlib.h
