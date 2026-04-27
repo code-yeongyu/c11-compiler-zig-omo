@@ -42,6 +42,7 @@ rcsid[] = "$Id: r_data.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 #include "r_sky.h"
 
 #include  <alloca.h>
+#include  <stddef.h>
 #include  <stdint.h>
 #include  <strings.h>
 
@@ -410,10 +411,11 @@ R_GetColumn
 //
 void R_InitTextures (void)
 {
-    maptexture_t*	mtexture;
+    const byte*	mtexture;
     texture_t*		texture;
-    mappatch_t*		mpatch;
+    const byte*	mpatch;
     texpatch_t*		patch;
+    mappatch_t		mappatch;
 
     int			i;
     int			j;
@@ -435,6 +437,9 @@ void R_InitTextures (void)
     int			maxoff2;
     int			numtextures1;
     int			numtextures2;
+    short		width;
+    short		height;
+    short		patchcount;
 
     int*		directory;
     
@@ -519,26 +524,30 @@ void R_InitTextures (void)
 	if (offset > maxoff)
 	    I_Error ("R_InitTextures: bad texture directory");
 	
-	mtexture = (maptexture_t *) ( (byte *)maptex + offset);
+	mtexture = (const byte *)maptex + offset;
+	memcpy (&width, mtexture + offsetof(maptexture_t, width), sizeof(width));
+	memcpy (&height, mtexture + offsetof(maptexture_t, height), sizeof(height));
+	memcpy (&patchcount, mtexture + offsetof(maptexture_t, patchcount), sizeof(patchcount));
 
 	texture = textures[i] =
 	    Z_Malloc (sizeof(texture_t)
-		      + sizeof(texpatch_t)*(SHORT(mtexture->patchcount)-1),
+		      + sizeof(texpatch_t)*(SHORT(patchcount)-1),
 		      PU_STATIC, 0);
 	
-	texture->width = SHORT(mtexture->width);
-	texture->height = SHORT(mtexture->height);
-	texture->patchcount = SHORT(mtexture->patchcount);
+	texture->width = SHORT(width);
+	texture->height = SHORT(height);
+	texture->patchcount = SHORT(patchcount);
 
-	memcpy (texture->name, mtexture->name, sizeof(texture->name));
-	mpatch = &mtexture->patches[0];
+	memcpy (texture->name, mtexture + offsetof(maptexture_t, name), sizeof(texture->name));
+	mpatch = mtexture + offsetof(maptexture_t, patches);
 	patch = &texture->patches[0];
 
-	for (j=0 ; j<texture->patchcount ; j++, mpatch++, patch++)
+	for (j=0 ; j<texture->patchcount ; j++, mpatch += sizeof(mappatch), patch++)
 	{
-	    patch->originx = SHORT(mpatch->originx);
-	    patch->originy = SHORT(mpatch->originy);
-	    patch->patch = patchlookup[SHORT(mpatch->patch)];
+	    memcpy (&mappatch, mpatch, sizeof(mappatch));
+	    patch->originx = SHORT(mappatch.originx);
+	    patch->originy = SHORT(mappatch.originy);
+	    patch->patch = patchlookup[SHORT(mappatch.patch)];
 	    if (patch->patch == -1)
 	    {
 		I_Error ("R_InitTextures: Missing patch in texture %s",
@@ -553,7 +562,7 @@ void R_InitTextures (void)
 	    j<<=1;
 
 	texturewidthmask[i] = j-1;
-	textureheight[i] = texture->height<<FRACBITS;
+	textureheight[i] = (fixed_t)((unsigned)texture->height << FRACBITS);
 		
 	totalwidth += texture->width;
     }
@@ -619,9 +628,9 @@ void R_InitSpriteLumps (void)
 	    printf (".");
 
 	patch = W_CacheLumpNum (firstspritelump+i, PU_CACHE);
-	spritewidth[i] = SHORT(patch->width)<<FRACBITS;
-	spriteoffset[i] = SHORT(patch->leftoffset)<<FRACBITS;
-	spritetopoffset[i] = SHORT(patch->topoffset)<<FRACBITS;
+	spritewidth[i] = (fixed_t)((unsigned)SHORT(patch->width) << FRACBITS);
+	spriteoffset[i] = (fixed_t)((unsigned)SHORT(patch->leftoffset) << FRACBITS);
+	spritetopoffset[i] = (fixed_t)((unsigned)SHORT(patch->topoffset) << FRACBITS);
     }
 }
 
@@ -843,4 +852,3 @@ void R_PrecacheLevel (void)
 	}
     }
 }
-
