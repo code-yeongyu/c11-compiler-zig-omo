@@ -14,6 +14,7 @@ FREEDOOM_VERSION := 0.13.0
 FREEDOOM_ZIP := $(BUILD_DIR)/freedoom-$(FREEDOOM_VERSION).zip
 FREEDOOM_WAD := $(BUILD_DIR)/freedoom1.wad
 SMOKE_LOG := qa/qa-smoke.log
+HEADLESS_LOG := qa/qa-headless.log
 
 CPPFLAGS += -DNORMALUNIX -DDEFAULT_DOOMWADDIR='"."' -I$(VENDOR_DIR)
 ifeq ($(HEADLESS),1)
@@ -65,9 +66,13 @@ $(FREEDOOM_WAD): $(FREEDOOM_ZIP)
 	python3 -c 'import zipfile; z=zipfile.ZipFile("$(FREEDOOM_ZIP)"); n=[x for x in z.namelist() if x.endswith("freedoom1.wad")][0]; open("$(FREEDOOM_WAD)", "wb").write(z.read(n))'
 
 smoke: $(TARGET) $(FREEDOOM_WAD) | qa
-	DOOM_HEADLESS_LOG=$(SMOKE_LOG) ./$(TARGET) -iwad $(FREEDOOM_WAD) -timedemo demo1
+	cp $(FREEDOOM_WAD) $(BUILD_DIR)/doom.wad
+	rm -f $(SMOKE_LOG) $(HEADLESS_LOG)
+	DOOMWADDIR=$(BUILD_DIR) DOOM_HEADLESS_LOG=$(HEADLESS_LOG) DOOM_HEADLESS_MAX_FRAMES=64 ./$(TARGET) -warp 1 1 > $(SMOKE_LOG) 2>&1
 	test -s $(SMOKE_LOG)
-	grep -q "DOOM started" $(SMOKE_LOG)
+	test -s $(HEADLESS_LOG)
+	grep -Eq "DOOM .* Startup|R_Init|ST_Init" $(SMOKE_LOG)
+	grep -q "frame=64" $(HEADLESS_LOG)
 
 clean:
 	rm -rf $(BUILD_DIR)
