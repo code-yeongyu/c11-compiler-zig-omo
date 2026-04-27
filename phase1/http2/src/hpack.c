@@ -181,7 +181,7 @@ static int h2_hpack_decode_string(const uint8_t *wire, size_t wire_len, char *ou
     return H2_OK;
 }
 
-static int h2_hpack_skip_string(const uint8_t *wire, size_t wire_len, size_t *used)
+static int h2_hpack_skip_string_capped(const uint8_t *wire, size_t wire_len, size_t value_cap, size_t *used)
 {
     uint32_t value_len;
     size_t prefix_len;
@@ -194,6 +194,9 @@ static int h2_hpack_skip_string(const uint8_t *wire, size_t wire_len, size_t *us
     }
     if (prefix_len + value_len > wire_len) {
         return H2_COMPRESSION_ERROR;
+    }
+    if ((size_t)value_len >= value_cap) {
+        return H2_REFUSED_STREAM;
     }
     *used = prefix_len + value_len;
     return H2_OK;
@@ -367,8 +370,13 @@ int h2_hpack_extract_path(const uint8_t *wire, size_t wire_len, char *path, size
             if (ret != H2_OK) {
                 return ret;
             }
-        } else if (h2_hpack_skip_string(wire + pos, wire_len - pos, &used) != H2_OK) {
-            return H2_COMPRESSION_ERROR;
+        } else {
+            int ret;
+
+            ret = h2_hpack_skip_string_capped(wire + pos, wire_len - pos, sizeof(value), &used);
+            if (ret != H2_OK) {
+                return ret;
+            }
         }
         pos += used;
     }

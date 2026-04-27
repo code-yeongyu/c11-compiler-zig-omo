@@ -159,6 +159,34 @@ static int test_hpack_decode_literal(void)
     return 0;
 }
 
+static int test_hpack_rejects_oversized_non_path_literal_value(void)
+{
+    uint8_t block[H2_HEADER_VALUE_CAP + 64u];
+    char value[H2_HEADER_VALUE_CAP + 1u];
+    char path[64];
+    size_t pos;
+    size_t chunk_len;
+
+    /* given a header block with :path followed by an oversized non-:path literal value {[http2-engineer]} */
+    pos = 0u;
+    chunk_len = h2_hpack_encode_indexed(block + pos, sizeof(block) - pos, 4u);
+    EXPECT_TRUE(chunk_len > 0u);
+    pos += chunk_len;
+    memset(value, 'x', sizeof(value) - 1u);
+    value[sizeof(value) - 1u] = '\0';
+    chunk_len = h2_hpack_encode_integer(block + pos, sizeof(block) - pos, 4u, 0x00u, 58u);
+    EXPECT_TRUE(chunk_len > 0u);
+    pos += chunk_len;
+    chunk_len = h2_hpack_encode_string(block + pos, sizeof(block) - pos, value);
+    EXPECT_TRUE(chunk_len > 0u);
+    pos += chunk_len;
+
+    /* when extracting :path scans the later literal field {[http2-engineer]} */
+    /* then the oversized value is rejected instead of skipped unbounded {[http2-engineer]} */
+    EXPECT_EQ_INT(h2_hpack_extract_path(block, pos, path, sizeof(path)), H2_REFUSED_STREAM);
+    return 0;
+}
+
 int main(void)
 {
     EXPECT_EQ_INT(test_static_table(), 0);
@@ -169,6 +197,7 @@ int main(void)
     EXPECT_EQ_INT(test_hpack_decode_request_path(), 0);
     EXPECT_EQ_INT(test_hpack_decode_literal(), 0);
     EXPECT_EQ_INT(test_hpack_refuses_oversized_literal_field(), 0);
+    EXPECT_EQ_INT(test_hpack_rejects_oversized_non_path_literal_value(), 0);
     puts("hpack_test: ok");
     return 0;
 }
