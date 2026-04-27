@@ -11,6 +11,10 @@ on:
       - 'phase2/**'
       - '.github/workflows/phase2-zig.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   guard:
     name: phase-2 guard
