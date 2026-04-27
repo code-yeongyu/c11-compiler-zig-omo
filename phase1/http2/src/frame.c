@@ -167,6 +167,9 @@ int h2_frame_parse_priority(const h2_frame_header *header, const uint8_t *payloa
 
     out->exclusive = (payload[0] & 0x80u) != 0u;
     out->stream_dependency = h2_read_u31(payload);
+    if (out->stream_dependency == header->stream_id) {
+        return H2_PROTOCOL_ERROR;
+    }
     out->weight = payload[4];
     return H2_OK;
 }
@@ -210,8 +213,11 @@ int h2_frame_parse_headers(const h2_frame_header *header, const uint8_t *payload
         priority_header.type = H2_FRAME_PRIORITY;
         priority_header.flags = 0u;
         priority_header.stream_id = header->stream_id;
-        if (h2_frame_parse_priority(&priority_header, payload + payload_pos, &out->priority) != H2_OK) {
-            return H2_FRAME_SIZE_ERROR;
+        int ret;
+
+        ret = h2_frame_parse_priority(&priority_header, payload + payload_pos, &out->priority);
+        if (ret != H2_OK) {
+            return ret;
         }
         payload_pos += 5u;
         block_len -= 5u;
@@ -407,7 +413,7 @@ static size_t h2_frame_encode_raw(uint8_t *wire, size_t cap, uint8_t type, uint8
 
 size_t h2_frame_encode_data(uint8_t *wire, size_t cap, uint32_t stream_id, uint8_t flags, const uint8_t *data, size_t data_len)
 {
-    if (stream_id == 0u) {
+    if (stream_id == 0u || (flags & H2_FLAG_PADDED) != 0u) {
         return 0u;
     }
     return h2_frame_encode_raw(wire, cap, H2_FRAME_DATA, flags, stream_id, data, data_len);
@@ -415,7 +421,7 @@ size_t h2_frame_encode_data(uint8_t *wire, size_t cap, uint32_t stream_id, uint8
 
 size_t h2_frame_encode_headers(uint8_t *wire, size_t cap, uint32_t stream_id, uint8_t flags, const uint8_t *header_block, size_t header_block_len)
 {
-    if (stream_id == 0u) {
+    if (stream_id == 0u || (flags & (H2_FLAG_PADDED | H2_FLAG_PRIORITY)) != 0u) {
         return 0u;
     }
     return h2_frame_encode_raw(wire, cap, H2_FRAME_HEADERS, flags, stream_id, header_block, header_block_len);
@@ -471,7 +477,7 @@ size_t h2_frame_encode_push_promise(uint8_t *wire, size_t cap, uint32_t stream_i
 {
     uint8_t payload[H2_DEFAULT_MAX_FRAME_SIZE];
 
-    if (stream_id == 0u || header_block_len + 4u > sizeof(payload) || (header_block_len > 0u && header_block == NULL)) {
+    if (stream_id == 0u || promised_stream_id == 0u || (flags & H2_FLAG_PADDED) != 0u || header_block_len > SIZE_MAX - 4u || header_block_len > sizeof(payload) - 4u || (header_block_len > 0u && header_block == NULL)) {
         return 0u;
     }
     h2_write_u32(payload, promised_stream_id & 0x7fffffffu);

@@ -90,6 +90,18 @@ static int h2_connection_queue_window_update(h2_connection *conn, uint32_t strea
     return h2_connection_queue_bytes(conn, wire, wire_len);
 }
 
+static int h2_connection_queue_rst_stream(h2_connection *conn, uint32_t stream_id, uint32_t error_code)
+{
+    uint8_t wire[H2_FRAME_HEADER_LEN + 4u];
+    size_t wire_len;
+
+    wire_len = h2_frame_encode_rst_stream(wire, sizeof(wire), stream_id, error_code);
+    if (wire_len == 0u) {
+        return H2_INTERNAL_ERROR;
+    }
+    return h2_connection_queue_bytes(conn, wire, wire_len);
+}
+
 static h2_stream *h2_connection_find_stream(h2_connection *conn, uint32_t stream_id)
 {
     size_t pos;
@@ -112,7 +124,7 @@ static h2_stream *h2_connection_get_stream(h2_connection *conn, uint32_t stream_
         return stream;
     }
     for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
-        if (conn->streams[pos].id == 0u) {
+        if (conn->streams[pos].id == 0u || conn->streams[pos].state == H2_STREAM_STATE_CLOSED) {
             h2_stream_init(&conn->streams[pos], stream_id, conn->initial_stream_window);
             return &conn->streams[pos];
         }
@@ -171,7 +183,7 @@ static int h2_connection_apply_settings(h2_connection *conn, const h2_frame_head
             }
             delta = (int64_t)settings[pos].value - (int64_t)conn->initial_stream_window;
             for (stream_pos = 0u; stream_pos < H2_CONN_MAX_STREAMS; stream_pos++) {
-                if (conn->streams[stream_pos].id != 0u) {
+                if (conn->streams[stream_pos].id != 0u && conn->streams[stream_pos].state != H2_STREAM_STATE_CLOSED) {
                     int64_t new_window;
 
                     new_window = (int64_t)conn->streams[stream_pos].send_window + delta;
@@ -190,6 +202,27 @@ static int h2_connection_apply_settings(h2_connection *conn, const h2_frame_head
         }
     }
     return h2_connection_queue_settings_ack(conn);
+}
+
+static int h2_connection_queue_deferred_data(h2_connection *conn, h2_stream *stream, const char *body, size_t body_len)
+{
+    uint8_t wire[H2_FRAME_HEADER_LEN + 1024u];
+    size_t wire_len;
+
+    if ((int64_t)conn->conn_send_window < (int64_t)body_len || (int64_t)stream->send_window < (int64_t)body_len) {
+        stream->response_body_deferred = true;
+        return H2_OK;
+    }
+    wire_len = h2_frame_encode_data(wire, sizeof(wire), stream->id, H2_FLAG_END_STREAM, (const uint8_t *)body, body_len);
+    if (wire_len == 0u || h2_connection_queue_bytes(conn, wire, wire_len) != H2_OK) {
+        return H2_INTERNAL_ERROR;
+    }
+    conn->conn_send_window -= (int32_t)body_len;
+    stream->send_window -= (int32_t)body_len;
+    stream->response_body_deferred = false;
+    stream->response_sent = true;
+    conn->responses_sent++;
+    return h2_stream_send_end_stream(stream);
 }
 
 static int h2_connection_queue_response(h2_connection *conn, h2_stream *stream)
@@ -224,44 +257,53 @@ static int h2_connection_queue_response(h2_connection *conn, h2_stream *stream)
         return H2_INTERNAL_ERROR;
     }
 
-    pos = 0u;
-    chunk_len = h2_hpack_encode_indexed(header_block + pos, sizeof(header_block) - pos, 8u);
-    if (chunk_len == 0u) {
-        return H2_INTERNAL_ERROR;
-    }
-    pos += chunk_len;
-    chunk_len = h2_hpack_encode_literal_new_name(header_block + pos, sizeof(header_block) - pos, "content-type", "text/plain");
-    if (chunk_len == 0u) {
-        return H2_INTERNAL_ERROR;
-    }
-    pos += chunk_len;
-    chunk_len = h2_hpack_encode_literal_new_name(header_block + pos, sizeof(header_block) - pos, "content-length", content_length);
-    if (chunk_len == 0u) {
-        return H2_INTERNAL_ERROR;
-    }
-    pos += chunk_len;
-    chunk_len = h2_hpack_encode_literal_new_name(header_block + pos, sizeof(header_block) - pos, "server", "c11-h2");
-    if (chunk_len == 0u) {
-        return H2_INTERNAL_ERROR;
-    }
-    pos += chunk_len;
+    if (!stream->response_headers_sent) {
+        pos = 0u;
+        chunk_len = h2_hpack_encode_indexed(header_block + pos, sizeof(header_block) - pos, 8u);
+        if (chunk_len == 0u) {
+            return H2_INTERNAL_ERROR;
+        }
+        pos += chunk_len;
+        chunk_len = h2_hpack_encode_literal_new_name(header_block + pos, sizeof(header_block) - pos, "content-type", "text/plain");
+        if (chunk_len == 0u) {
+            return H2_INTERNAL_ERROR;
+        }
+        pos += chunk_len;
+        chunk_len = h2_hpack_encode_literal_new_name(header_block + pos, sizeof(header_block) - pos, "content-length", content_length);
+        if (chunk_len == 0u) {
+            return H2_INTERNAL_ERROR;
+        }
+        pos += chunk_len;
+        chunk_len = h2_hpack_encode_literal_new_name(header_block + pos, sizeof(header_block) - pos, "server", "c11-h2");
+        if (chunk_len == 0u) {
+            return H2_INTERNAL_ERROR;
+        }
+        pos += chunk_len;
 
-    wire_len = h2_frame_encode_headers(wire, sizeof(wire), stream->id, H2_FLAG_END_HEADERS, header_block, pos);
-    if (wire_len == 0u || h2_connection_queue_bytes(conn, wire, wire_len) != H2_OK) {
-        return H2_INTERNAL_ERROR;
+        wire_len = h2_frame_encode_headers(wire, sizeof(wire), stream->id, H2_FLAG_END_HEADERS, header_block, pos);
+        if (wire_len == 0u || h2_connection_queue_bytes(conn, wire, wire_len) != H2_OK) {
+            return H2_INTERNAL_ERROR;
+        }
+        stream->response_headers_sent = true;
     }
-    if ((size_t)conn->conn_send_window < body_len || (size_t)stream->send_window < body_len) {
-        return H2_FLOW_CONTROL_ERROR;
+    return h2_connection_queue_deferred_data(conn, stream, body, body_len);
+}
+
+static int h2_connection_flush_deferred_responses(h2_connection *conn)
+{
+    size_t pos;
+
+    for (pos = 0u; pos < H2_CONN_MAX_STREAMS; pos++) {
+        if (conn->streams[pos].id != 0u && conn->streams[pos].state != H2_STREAM_STATE_CLOSED && conn->streams[pos].response_body_deferred) {
+            int ret;
+
+            ret = h2_connection_queue_response(conn, &conn->streams[pos]);
+            if (ret != H2_OK) {
+                return ret;
+            }
+        }
     }
-    wire_len = h2_frame_encode_data(wire, sizeof(wire), stream->id, H2_FLAG_END_STREAM, (const uint8_t *)body, body_len);
-    if (wire_len == 0u || h2_connection_queue_bytes(conn, wire, wire_len) != H2_OK) {
-        return H2_INTERNAL_ERROR;
-    }
-    conn->conn_send_window -= (int32_t)body_len;
-    stream->send_window -= (int32_t)body_len;
-    stream->response_sent = true;
-    conn->responses_sent++;
-    return h2_stream_send_end_stream(stream);
+    return H2_OK;
 }
 
 static int h2_connection_finish_headers(h2_connection *conn, uint32_t stream_id, uint8_t flags, const uint8_t *header_block, size_t header_block_len)
@@ -272,13 +314,14 @@ static int h2_connection_finish_headers(h2_connection *conn, uint32_t stream_id,
     if ((stream_id & 1u) == 0u) {
         return H2_PROTOCOL_ERROR;
     }
+    if (stream_id <= conn->last_stream_id) {
+        return H2_PROTOCOL_ERROR;
+    }
     stream = h2_connection_get_stream(conn, stream_id);
     if (stream == NULL) {
         return H2_REFUSED_STREAM;
     }
-    if (stream_id > conn->last_stream_id) {
-        conn->last_stream_id = stream_id;
-    }
+    conn->last_stream_id = stream_id;
     ret = h2_hpack_extract_path(header_block, header_block_len, stream->path, sizeof(stream->path));
     if (ret != H2_OK) {
         return ret;
@@ -358,9 +401,17 @@ static int h2_connection_process_data(h2_connection *conn, const h2_frame_header
     if (ret != H2_OK) {
         return ret;
     }
-    stream = h2_connection_get_stream(conn, header->stream_id);
+    stream = h2_connection_find_stream(conn, header->stream_id);
     if (stream == NULL) {
-        return H2_REFUSED_STREAM;
+        return H2_PROTOCOL_ERROR;
+    }
+    if (stream->state != H2_STREAM_STATE_OPEN && stream->state != H2_STREAM_STATE_HALF_CLOSED_LOCAL) {
+        if ((size_t)conn->conn_recv_window < header->length) {
+            return H2_FLOW_CONTROL_ERROR;
+        }
+        conn->conn_recv_window -= (int32_t)header->length;
+        (void)h2_connection_refresh_recv_windows(conn, NULL);
+        return H2_STREAM_CLOSED;
     }
     if ((size_t)conn->conn_recv_window < header->length) {
         return H2_FLOW_CONTROL_ERROR;
@@ -371,7 +422,7 @@ static int h2_connection_process_data(h2_connection *conn, const h2_frame_header
         return ret;
     }
     (void)parsed;
-    return h2_connection_refresh_recv_windows(conn, stream);
+    return h2_connection_refresh_recv_windows(conn, stream->state == H2_STREAM_STATE_CLOSED ? NULL : stream);
 }
 
 static int h2_connection_process_window_update(h2_connection *conn, const h2_frame_header *header, const uint8_t *payload)
@@ -384,13 +435,46 @@ static int h2_connection_process_window_update(h2_connection *conn, const h2_fra
         return ret;
     }
     if (header->stream_id == 0u) {
-        if (increment > (uint32_t)(INT32_MAX - conn->conn_send_window)) {
+        if ((int64_t)conn->conn_send_window + (int64_t)increment > (int64_t)INT32_MAX) {
             return H2_FLOW_CONTROL_ERROR;
         }
         conn->conn_send_window += (int32_t)increment;
-        return H2_OK;
+        return h2_connection_flush_deferred_responses(conn);
     }
-    return h2_stream_add_send_window(h2_connection_get_stream(conn, header->stream_id), increment);
+    {
+        h2_stream *stream;
+
+        stream = h2_connection_find_stream(conn, header->stream_id);
+        if (stream == NULL) {
+            return H2_OK;
+        }
+        ret = h2_stream_add_send_window(stream, increment);
+        if (ret != H2_OK) {
+            return ret;
+        }
+    }
+    return h2_connection_flush_deferred_responses(conn);
+}
+
+static bool h2_connection_is_stream_error(int error_code)
+{
+    return error_code == H2_REFUSED_STREAM || error_code == H2_STREAM_CLOSED;
+}
+
+static int h2_connection_reset_stream_error(h2_connection *conn, uint32_t stream_id, uint32_t error_code)
+{
+    h2_stream *stream;
+    int ret;
+
+    stream = h2_connection_find_stream(conn, stream_id);
+    ret = h2_connection_queue_rst_stream(conn, stream_id, error_code);
+    if (ret != H2_OK) {
+        return ret;
+    }
+    if (stream != NULL) {
+        h2_stream_close(stream);
+    }
+    return H2_OK;
 }
 
 static int h2_connection_process_frame(h2_connection *conn, const h2_frame_header *header, const uint8_t *payload)
@@ -410,11 +494,16 @@ static int h2_connection_process_frame(h2_connection *conn, const h2_frame_heade
     case H2_FRAME_HEADERS:
         return h2_connection_process_headers(conn, header, payload);
     case H2_FRAME_PRIORITY:
-        ret = h2_frame_validate_payload(header);
+    {
+        h2_priority_payload priority;
+
+        ret = h2_frame_parse_priority(header, payload, &priority);
         if (ret != H2_OK) {
             return ret;
         }
+        (void)priority;
         return H2_OK;
+    }
     case H2_FRAME_RST_STREAM: {
         h2_stream *stream;
         uint32_t error_code;
@@ -423,10 +512,25 @@ static int h2_connection_process_frame(h2_connection *conn, const h2_frame_heade
         if (ret != H2_OK) {
             return ret;
         }
-        stream = h2_connection_get_stream(conn, header->stream_id);
+        stream = h2_connection_find_stream(conn, header->stream_id);
         if (stream != NULL) {
-            stream->state = H2_STREAM_STATE_CLOSED;
+            h2_stream_close(stream);
+            (void)error_code;
+            return H2_OK;
         }
+        /* Per RFC 7540 §6.4: RST_STREAM on idle stream MUST be PROTOCOL_ERROR.
+         * Per RFC 7540 §5.1.1: client streams have odd IDs; server streams (PUSH) have even IDs.
+         * This implementation does not push, so all even IDs are guaranteed-idle.
+         */
+        if ((header->stream_id & 1U) == 0U) {
+            /* Server-initiated even ID; we never push, so always idle -> PROTOCOL_ERROR. */
+            return H2_PROTOCOL_ERROR;
+        }
+        if (header->stream_id > conn->last_stream_id) {
+            /* Future odd ID we never opened -- idle -> PROTOCOL_ERROR. */
+            return H2_PROTOCOL_ERROR;
+        }
+        /* Past odd ID: implicitly closed (we already cleaned it up). Ignore. */
         (void)error_code;
         return H2_OK;
     }
@@ -518,8 +622,17 @@ int h2_connection_feed(h2_connection *conn, const uint8_t *data, size_t data_len
         }
         ret = h2_connection_process_frame(conn, &header, conn->input + H2_FRAME_HEADER_LEN);
         if (ret != H2_OK) {
-            (void)h2_connection_queue_goaway(conn, (uint32_t)ret);
-            return ret;
+            if (h2_connection_is_stream_error(ret) && header.stream_id != 0u) {
+                int rst_ret;
+
+                rst_ret = h2_connection_reset_stream_error(conn, header.stream_id, (uint32_t)ret);
+                if (rst_ret != H2_OK) {
+                    return rst_ret;
+                }
+            } else {
+                (void)h2_connection_queue_goaway(conn, (uint32_t)ret);
+                return ret;
+            }
         }
         memmove(conn->input, conn->input + whole_len, conn->input_len - whole_len);
         conn->input_len -= whole_len;

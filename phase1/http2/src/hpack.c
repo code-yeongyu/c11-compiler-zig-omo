@@ -15,7 +15,7 @@ static int h2_copy_text(char *dst, size_t dst_cap, const char *src)
     }
     src_len = strlen(src);
     if (src_len >= dst_cap) {
-        return H2_COMPRESSION_ERROR;
+        return H2_REFUSED_STREAM;
     }
     memcpy(dst, src, src_len + 1u);
     return H2_OK;
@@ -24,7 +24,7 @@ static int h2_copy_text(char *dst, size_t dst_cap, const char *src)
 int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix_bits, uint32_t *value, size_t *used)
 {
     uint32_t prefix_max;
-    uint32_t result;
+    uint64_t result;
     uint32_t shift;
     size_t pos;
 
@@ -32,9 +32,9 @@ int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix
         return H2_COMPRESSION_ERROR;
     }
     prefix_max = (1u << prefix_bits) - 1u;
-    result = (uint32_t)(wire[0] & (uint8_t)prefix_max);
+    result = (uint64_t)(wire[0] & (uint8_t)prefix_max);
     if (result < prefix_max) {
-        *value = result;
+        *value = (uint32_t)result;
         *used = 1u;
         return H2_OK;
     }
@@ -43,15 +43,28 @@ int h2_hpack_decode_integer(const uint8_t *wire, size_t wire_len, uint8_t prefix
     pos = 1u;
     while (pos < wire_len) {
         uint8_t byte;
+        uint64_t addition;
+        uint64_t byte_value;
 
         byte = wire[pos];
-        if (shift >= 28u && (byte & 0x7fu) > 15u) {
+        if (pos > 5u) {
             return H2_COMPRESSION_ERROR;
         }
-        result += ((uint32_t)(byte & 0x7fu)) << shift;
+        if (shift >= 32u) {
+            return H2_COMPRESSION_ERROR;
+        }
+        byte_value = (uint64_t)(byte & 0x7fu);
+        if (byte_value > ((uint64_t)UINT32_MAX >> shift)) {
+            return H2_COMPRESSION_ERROR;
+        }
+        addition = byte_value << shift;
+        if (result > (uint64_t)UINT32_MAX - addition) {
+            return H2_COMPRESSION_ERROR;
+        }
+        result += addition;
         pos++;
         if ((byte & 0x80u) == 0u) {
-            *value = result;
+            *value = (uint32_t)result;
             *used = pos;
             return H2_OK;
         }
@@ -156,8 +169,11 @@ static int h2_hpack_decode_string(const uint8_t *wire, size_t wire_len, char *ou
     if (h2_hpack_decode_integer(wire, wire_len, 7u, &value_len, &prefix_len) != H2_OK) {
         return H2_COMPRESSION_ERROR;
     }
-    if (prefix_len + value_len > wire_len || (size_t)value_len >= out_cap) {
+    if (prefix_len + value_len > wire_len) {
         return H2_COMPRESSION_ERROR;
+    }
+    if ((size_t)value_len >= out_cap) {
+        return H2_REFUSED_STREAM;
     }
     memcpy(out, wire + prefix_len, value_len);
     out[value_len] = '\0';
@@ -165,7 +181,7 @@ static int h2_hpack_decode_string(const uint8_t *wire, size_t wire_len, char *ou
     return H2_OK;
 }
 
-static int h2_hpack_skip_string(const uint8_t *wire, size_t wire_len, size_t *used)
+static int h2_hpack_skip_string_capped(const uint8_t *wire, size_t wire_len, size_t value_cap, size_t *used)
 {
     uint32_t value_len;
     size_t prefix_len;
@@ -179,6 +195,9 @@ static int h2_hpack_skip_string(const uint8_t *wire, size_t wire_len, size_t *us
     if (prefix_len + value_len > wire_len) {
         return H2_COMPRESSION_ERROR;
     }
+    if ((size_t)value_len >= value_cap) {
+        return H2_REFUSED_STREAM;
+    }
     *used = prefix_len + value_len;
     return H2_OK;
 }
@@ -187,14 +206,16 @@ static int h2_hpack_decode_indexed_literal_name(const uint8_t *wire, size_t wire
 {
     uint32_t name_index;
     size_t used;
+    int ret;
 
     if (h2_hpack_decode_integer(wire + *pos, wire_len - *pos, prefix_bits, &name_index, &used) != H2_OK) {
         return H2_COMPRESSION_ERROR;
     }
     *pos += used;
     if (name_index == 0u) {
-        if (h2_hpack_decode_string(wire + *pos, wire_len - *pos, name, name_cap, &used) != H2_OK) {
-            return H2_COMPRESSION_ERROR;
+        ret = h2_hpack_decode_string(wire + *pos, wire_len - *pos, name, name_cap, &used);
+        if (ret != H2_OK) {
+            return ret;
         }
         *pos += used;
         return H2_OK;
@@ -221,15 +242,18 @@ int h2_hpack_decode_headers(const uint8_t *wire, size_t wire_len, h2_header_fiel
         size_t used;
 
         if (count >= field_cap) {
-            return H2_COMPRESSION_ERROR;
+            return H2_REFUSED_STREAM;
         }
         if ((wire[pos] & 0x80u) != 0u) {
             if (h2_hpack_decode_integer(wire + pos, wire_len - pos, 7u, &index, &used) != H2_OK) {
                 return H2_COMPRESSION_ERROR;
             }
             entry = h2_hpack_static_get(index);
-            if (entry == NULL || h2_copy_text(fields[count].name, sizeof(fields[count].name), entry->name) != H2_OK || h2_copy_text(fields[count].value, sizeof(fields[count].value), entry->value) != H2_OK) {
+            if (entry == NULL) {
                 return H2_COMPRESSION_ERROR;
+            }
+            if (h2_copy_text(fields[count].name, sizeof(fields[count].name), entry->name) != H2_OK || h2_copy_text(fields[count].value, sizeof(fields[count].value), entry->value) != H2_OK) {
+                return H2_REFUSED_STREAM;
             }
             pos += used;
             count++;
@@ -243,16 +267,27 @@ int h2_hpack_decode_headers(const uint8_t *wire, size_t wire_len, h2_header_fiel
             continue;
         }
         if ((wire[pos] & 0x40u) != 0u) {
-            if (h2_hpack_decode_indexed_literal_name(wire, wire_len, 6u, fields[count].name, sizeof(fields[count].name), &pos) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            int ret;
+
+            ret = h2_hpack_decode_indexed_literal_name(wire, wire_len, 6u, fields[count].name, sizeof(fields[count].name), &pos);
+            if (ret != H2_OK) {
+                return ret;
             }
         } else {
-            if (h2_hpack_decode_indexed_literal_name(wire, wire_len, 4u, fields[count].name, sizeof(fields[count].name), &pos) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            int ret;
+
+            ret = h2_hpack_decode_indexed_literal_name(wire, wire_len, 4u, fields[count].name, sizeof(fields[count].name), &pos);
+            if (ret != H2_OK) {
+                return ret;
             }
         }
-        if (h2_hpack_decode_string(wire + pos, wire_len - pos, fields[count].value, sizeof(fields[count].value), &used) != H2_OK) {
-            return H2_COMPRESSION_ERROR;
+        {
+            int ret;
+
+            ret = h2_hpack_decode_string(wire + pos, wire_len - pos, fields[count].value, sizeof(fields[count].value), &used);
+            if (ret != H2_OK) {
+                return ret;
+            }
         }
         pos += used;
         count++;
@@ -282,8 +317,8 @@ int h2_hpack_extract_path(const uint8_t *wire, size_t wire_len, char *path, size
         const h2_hpack_static_entry *entry;
         uint32_t index;
         size_t used;
-        char name[64];
-        char value[256];
+        char name[H2_HEADER_NAME_CAP];
+        char value[H2_HEADER_VALUE_CAP];
 
         if ((wire[pos] & 0x80u) != 0u) {
             if (h2_hpack_decode_integer(wire + pos, wire_len - pos, 7u, &index, &used) != H2_OK) {
@@ -293,8 +328,11 @@ int h2_hpack_extract_path(const uint8_t *wire, size_t wire_len, char *path, size
             if (entry == NULL) {
                 return H2_COMPRESSION_ERROR;
             }
-            if (h2_maybe_copy_path(entry->name, entry->value, path, path_cap) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            int ret;
+
+            ret = h2_maybe_copy_path(entry->name, entry->value, path, path_cap);
+            if (ret != H2_OK) {
+                return ret;
             }
             pos += used;
             continue;
@@ -307,23 +345,38 @@ int h2_hpack_extract_path(const uint8_t *wire, size_t wire_len, char *path, size
             continue;
         }
         if ((wire[pos] & 0x40u) != 0u) {
-            if (h2_hpack_decode_indexed_literal_name(wire, wire_len, 6u, name, sizeof(name), &pos) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            int ret;
+
+            ret = h2_hpack_decode_indexed_literal_name(wire, wire_len, 6u, name, sizeof(name), &pos);
+            if (ret != H2_OK) {
+                return ret;
             }
         } else {
-            if (h2_hpack_decode_indexed_literal_name(wire, wire_len, 4u, name, sizeof(name), &pos) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            int ret;
+
+            ret = h2_hpack_decode_indexed_literal_name(wire, wire_len, 4u, name, sizeof(name), &pos);
+            if (ret != H2_OK) {
+                return ret;
             }
         }
         if (strcmp(name, ":path") == 0) {
-            if (h2_hpack_decode_string(wire + pos, wire_len - pos, value, sizeof(value), &used) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            int ret;
+
+            ret = h2_hpack_decode_string(wire + pos, wire_len - pos, value, sizeof(value), &used);
+            if (ret != H2_OK) {
+                return ret;
             }
-            if (h2_copy_text(path, path_cap, value) != H2_OK) {
-                return H2_COMPRESSION_ERROR;
+            ret = h2_copy_text(path, path_cap, value);
+            if (ret != H2_OK) {
+                return ret;
             }
-        } else if (h2_hpack_skip_string(wire + pos, wire_len - pos, &used) != H2_OK) {
-            return H2_COMPRESSION_ERROR;
+        } else {
+            int ret;
+
+            ret = h2_hpack_skip_string_capped(wire + pos, wire_len - pos, sizeof(value), &used);
+            if (ret != H2_OK) {
+                return ret;
+            }
         }
         pos += used;
     }

@@ -1,6 +1,7 @@
 #include "http2/server.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,9 @@ static int h2_parse_u16(const char *text, uint16_t *out)
     char *end;
     unsigned long value;
 
+    if (text == NULL || text[0] == '-') {
+        return -1;
+    }
     errno = 0;
     value = strtoul(text, &end, 10);
     if (errno != 0 || end == text || *end != '\0' || value > 65535ul) {
@@ -29,9 +33,12 @@ static int h2_parse_unsigned(const char *text, unsigned *out)
     char *end;
     unsigned long value;
 
+    if (text == NULL || text[0] == '-') {
+        return -1;
+    }
     errno = 0;
     value = strtoul(text, &end, 10);
-    if (errno != 0 || end == text || *end != '\0') {
+    if (errno != 0 || end == text || *end != '\0' || value > (unsigned long)UINT_MAX) {
         return -1;
     }
     *out = (unsigned)value;
