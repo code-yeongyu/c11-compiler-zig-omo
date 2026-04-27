@@ -77,6 +77,17 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #include "d_main.h"
 
+#define FREE_IWAD_PATHS() \
+    do { \
+        free(doom1wad); \
+        free(doomwad); \
+        free(doomuwad); \
+        free(doom2wad); \
+        free(doom2fwad); \
+        free(plutoniawad); \
+        free(tntwad); \
+    } while (0)
+
 //
 // D-DoomLoop()
 // Not a globally visible function,
@@ -563,14 +574,14 @@ void D_AddFile (char *file)
 void IdentifyVersion (void)
 {
 
-    char*	doom1wad;
-    char*	doomwad;
-    char*	doomuwad;
-    char*	doom2wad;
+    char*	doom1wad = NULL;
+    char*	doomwad = NULL;
+    char*	doomuwad = NULL;
+    char*	doom2wad = NULL;
 
-    char*	doom2fwad;
-    char*	plutoniawad;
-    char*	tntwad;
+    char*	doom2fwad = NULL;
+    char*	plutoniawad = NULL;
+    char*	tntwad = NULL;
 
 #ifdef NORMALUNIX
     char *home;
@@ -622,6 +633,7 @@ void IdentifyVersion (void)
 	D_AddFile (DEVMAPS"data_se/texture1.lmp");
 	D_AddFile (DEVMAPS"data_se/pnames.lmp");
 	strcpy (basedefault,DEVDATA"default.cfg");
+	FREE_IWAD_PATHS();
 	return;
     }
 
@@ -634,6 +646,7 @@ void IdentifyVersion (void)
 	D_AddFile (DEVMAPS"data_se/texture2.lmp");
 	D_AddFile (DEVMAPS"data_se/pnames.lmp");
 	strcpy (basedefault,DEVDATA"default.cfg");
+	FREE_IWAD_PATHS();
 	return;
     }
 
@@ -652,6 +665,7 @@ void IdentifyVersion (void)
 	D_AddFile (DEVMAPS"cdata/texture1.lmp");
 	D_AddFile (DEVMAPS"cdata/pnames.lmp");
 	strcpy (basedefault,DEVDATA"default.cfg");
+	FREE_IWAD_PATHS();
 	return;
     }
 
@@ -663,6 +677,7 @@ void IdentifyVersion (void)
 	language = french;
 	printf("French version\n");
 	D_AddFile (doom2fwad);
+	FREE_IWAD_PATHS();
 	return;
     }
 
@@ -670,6 +685,7 @@ void IdentifyVersion (void)
     {
 	gamemode = commercial;
 	D_AddFile (doom2wad);
+	FREE_IWAD_PATHS();
 	return;
     }
 
@@ -677,6 +693,7 @@ void IdentifyVersion (void)
     {
       gamemode = commercial;
       D_AddFile (plutoniawad);
+      FREE_IWAD_PATHS();
       return;
     }
 
@@ -684,6 +701,7 @@ void IdentifyVersion (void)
     {
       gamemode = commercial;
       D_AddFile (tntwad);
+      FREE_IWAD_PATHS();
       return;
     }
 
@@ -691,6 +709,7 @@ void IdentifyVersion (void)
     {
       gamemode = retail;
       D_AddFile (doomuwad);
+      FREE_IWAD_PATHS();
       return;
     }
 
@@ -698,6 +717,7 @@ void IdentifyVersion (void)
     {
       gamemode = registered;
       D_AddFile (doomwad);
+      FREE_IWAD_PATHS();
       return;
     }
 
@@ -705,6 +725,7 @@ void IdentifyVersion (void)
     {
       gamemode = shareware;
       D_AddFile (doom1wad);
+      FREE_IWAD_PATHS();
       return;
     }
 
@@ -714,6 +735,7 @@ void IdentifyVersion (void)
     // We don't abort. Let's see what the PWAD contains.
     //exit(1);
     //I_Error ("Game mode indeterminate\n");
+    FREE_IWAD_PATHS();
 }
 
 //
