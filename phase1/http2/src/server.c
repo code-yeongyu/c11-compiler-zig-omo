@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -233,7 +234,7 @@ static int h2_accept_clients(h2_io *io, h2_client *clients, int listener_fd, uns
 
 int h2_server_run(const h2_server_config *config)
 {
-    h2_client clients[H2_SERVER_MAX_CLIENTS];
+    h2_client *clients;
     h2_event events[64];
     h2_io io;
     uint16_t bound_port;
@@ -246,18 +247,24 @@ int h2_server_run(const h2_server_config *config)
         return -1;
     }
     signal(SIGPIPE, SIG_IGN);
-    memset(clients, 0, sizeof(clients));
+    clients = calloc(H2_SERVER_MAX_CLIENTS, sizeof(*clients));
+    if (clients == NULL) {
+        return -1;
+    }
     listener_fd = h2_create_listener(config, &bound_port);
     if (listener_fd < 0) {
+        free(clients);
         return -1;
     }
     if (h2_io_init(&io) != 0) {
         close(listener_fd);
+        free(clients);
         return -1;
     }
     if (h2_io_add_listener(&io, listener_fd) != 0 || h2_write_ready_file(config->ready_file, bound_port) != 0) {
         h2_io_close(&io);
         close(listener_fd);
+        free(clients);
         return -1;
     }
     fprintf(stderr, "h2d listening on %s:%u using %s\n", config->host, (unsigned)bound_port, h2_io_backend_name());
@@ -323,5 +330,6 @@ int h2_server_run(const h2_server_config *config)
     }
     h2_io_close(&io);
     close(listener_fd);
+    free(clients);
     return exit_code;
 }
